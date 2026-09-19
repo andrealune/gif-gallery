@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ApiError, searchGifs } from '@/lib/api';
+import { ApiError, getCategories, searchGifs } from '@/lib/api';
 import { Container } from '@/components/layout/Container';
 import { GifGrid } from '@/components/gif/GifGrid';
 import { Pagination } from '@/components/ui/Pagination';
@@ -8,6 +8,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { SearchForm } from '@/components/search/SearchForm';
 import { DEFAULT_PAGE_SIZE } from '@/lib/config';
 import { buildKeywords, truncate } from '@/lib/seo';
+import type { CategorySummary } from '@/lib/types';
 
 interface SearchPageProps {
   searchParams: Promise<{ q?: string; offset?: string }>;
@@ -45,13 +46,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   let error: string | null = null;
   let unavailable = false;
 
+  // Kicked off alongside the search request below (not awaited yet) so both round-trip in
+  // parallel: search results only carry `categoryId` (see `lib/types.ts#GifSummary`), so this is
+  // how the grid gets a name/slug to label each result with - see `GifGrid`'s `categories` prop.
+  // Best-effort: results still render, just without a category label, if this fails.
+  const categoriesPromise = query ? getCategories({ limit: 100 }).catch(() => null) : Promise.resolve(null);
+
   if (query) {
     try {
       results = await searchGifs(query, { limit: DEFAULT_PAGE_SIZE, offset: safeOffset });
     } catch (err) {
-      // The `/api/search` endpoint doesn't exist yet (see lib/api.ts) - treat "not found"/"not
-      // implemented" as "not available yet" rather than a hard failure, so this page already
-      // degrades gracefully and needs no changes once the backend route ships (L42-428).
+      // `/api/search` (L42-420) can still be unreachable in some environments (not deployed yet,
+      // Elasticsearch down, ...) - treat "not found"/"not implemented"/offline as "not available
+      // right now" rather than a hard failure, so this page degrades gracefully instead of
+      // showing a raw error for something the user can't fix.
       if (err instanceof ApiError && (err.status === 404 || err.status === 501 || err.status === 0)) {
         unavailable = true;
       } else {
@@ -59,6 +67,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       }
     }
   }
+
+  const categoriesPage = await categoriesPromise;
+  const categoriesById: Map<string, CategorySummary> = categoriesPage
+    ? new Map(categoriesPage.items.map((category) => [category.id, category]))
+    : new Map();
 
   return (
     <Container className="py-10">
@@ -87,7 +100,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               {results.total} {results.total === 1 ? 'result' : 'results'} for &ldquo;{query}&rdquo;
             </p>
             <div className="mt-4">
-              <GifGrid gifs={results.items} />
+              <GifGrid gifs={results.items} categories={categoriesById} />
             </div>
             <Pagination
               basePath="/search"
