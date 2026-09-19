@@ -130,6 +130,30 @@ export const env = {
     // origin in production, e.g. https://www.example.com.
     siteUrl: optional('SITE_URL', 'http://localhost:3000').replace(/\/+$/, ''),
   },
+
+  elasticsearch: {
+    // GIF search cluster - see src/search and docs/elasticsearch.md (L42-418).
+    // Local dev: docker-compose.yml starts a single-node cluster at this
+    // default. Cloud/production: point at the managed endpoint and set
+    // ELASTICSEARCH_API_KEY (preferred) or USERNAME/PASSWORD.
+    node: optional('ELASTICSEARCH_NODE', 'http://localhost:9200'),
+    // Alias the application queries/writes through; the pipeline manages the
+    // real versioned indices (gifs_v1, gifs_v2, ...) behind it.
+    indexAlias: optional('ELASTICSEARCH_GIFS_INDEX', 'gifs'),
+    apiKey: optional('ELASTICSEARCH_API_KEY'),
+    username: optional('ELASTICSEARCH_USERNAME'),
+    password: optional('ELASTICSEARCH_PASSWORD'),
+    tlsRejectUnauthorized: toBool(process.env.ELASTICSEARCH_TLS_REJECT_UNAUTHORIZED, true),
+    requestTimeoutMs: toInt(process.env.ELASTICSEARCH_REQUEST_TIMEOUT_MS, 10000),
+    maxRetries: toInt(process.env.ELASTICSEARCH_MAX_RETRIES, 3),
+    // A single shard comfortably covers the 10k-100k document target (see
+    // gifsIndex.ts); replicas default to 0 for a single-node local cluster
+    // and should be raised (>=1) in production for availability.
+    indexShards: toInt(process.env.ELASTICSEARCH_INDEX_SHARDS, 1),
+    indexReplicas: toInt(process.env.ELASTICSEARCH_INDEX_REPLICAS, 0),
+    // Rows fetched from Postgres per page during a reindex (search:reindex).
+    reindexBatchSize: toInt(process.env.ELASTICSEARCH_REINDEX_BATCH_SIZE, 500),
+  },
 };
 
 export type Env = typeof env;
