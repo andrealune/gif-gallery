@@ -8,6 +8,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DEFAULT_PAGE_SIZE } from '@/lib/config';
+import { truncate } from '@/lib/seo';
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
@@ -23,11 +24,35 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
   const { slug } = await params;
 
   try {
+    // `limit: 1` is enough to get the category itself plus one representative GIF for the
+    // og:image/twitter:image preview, without paying for a full page of results just for <head>.
     const result = await getCategoryGifs(slug, { limit: 1 });
     if (!result) return { title: 'Category not found' };
+
+    const { category, gifs } = result;
+    const description = truncate(category.description ?? `Browse ${category.name} GIFs.`);
+    const preview = gifs.items[0];
+    const previewImage = preview ? preview.thumbnailUrl ?? preview.url : null;
+    const url = `/category/${category.slug}`;
+
     return {
-      title: result.category.name,
-      description: result.category.description ?? `Browse ${result.category.name} GIFs.`,
+      title: category.name,
+      description,
+      alternates: { canonical: url },
+      openGraph: {
+        title: category.name,
+        description,
+        url,
+        images: previewImage
+          ? [{ url: previewImage, alt: `${category.name} GIFs on this site` }]
+          : undefined,
+      },
+      twitter: {
+        card: previewImage ? 'summary_large_image' : 'summary',
+        title: category.name,
+        description,
+        images: previewImage ? [previewImage] : undefined,
+      },
     };
   } catch {
     return { title: 'Category' };

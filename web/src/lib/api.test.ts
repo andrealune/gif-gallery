@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { ApiError, getCategories, getCategory, getCategoryGifs, searchGifs } from './api';
+import { ApiError, getCategories, getCategory, getCategoryGifs, getGif, searchGifs } from './api';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -119,5 +119,27 @@ describe('api client', () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ error: 'Not found' }, 404));
 
     await expect(searchGifs('clap')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('getGif fetches by id/slug and unwraps the envelope', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ data: gif }));
+
+    const result = await getGif('g1');
+
+    expect(result).toEqual(gif);
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string];
+    expect(url).toContain('/gifs/g1');
+  });
+
+  it('getGif returns null when the gif is not found', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ error: 'not found' }, 404));
+
+    await expect(getGif('missing')).resolves.toBeNull();
+  });
+
+  it('getGif surfaces a typed ApiError for other failures (e.g. the route not existing yet)', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ error: 'not implemented' }, 501));
+
+    await expect(getGif('g1')).rejects.toBeInstanceOf(ApiError);
   });
 });

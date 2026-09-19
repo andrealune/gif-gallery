@@ -9,6 +9,8 @@ import { SITE_DESCRIPTION } from '@/lib/config';
 
 export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+  openGraph: { description: SITE_DESCRIPTION, url: '/' },
 };
 
 export default async function HomePage() {

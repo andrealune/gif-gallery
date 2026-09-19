@@ -126,3 +126,36 @@ export async function searchGifs(q: string, params: PaginationParams = {}): Prom
   const envelope = await apiFetch<ListEnvelope<GifSummary>>(`/search${query}`, { cache: 'no-store' });
   return toPage(envelope);
 }
+
+/**
+ * A single GIF with the extra field(s) only the detail page needs. `slug` is optional because the
+ * `gifs` table has no `slug` column yet (see `server/migrations/0005_create_gifs_table.up.sql`)
+ * even though `server/src/services/sitemap.ts` already emits `/gif/:slug` URLs assuming one - a
+ * mismatch flagged to the backend/database engineers alongside this change (see L42-431's report).
+ * Kept out of `GifSummary` itself so every existing list/grid caller (which never gets a `slug`
+ * from `/categories/:id/gifs` or `/search`) is unaffected.
+ */
+export interface GifDetail extends GifSummary {
+  slug?: string;
+}
+
+/**
+ * `GET /api/gifs/:idOrSlug` - not implemented by the backend yet (no `gifs` router is mounted in
+ * `server/src/routes/index.ts` today). Written against the same `{ data }` shape and `idOrSlug`
+ * lookup convention `getCategory` already uses, and returns `null` (rather than throwing) on a 404
+ * so the `/gif/[slug]` page (L42-431) can call `notFound()`. This throws for any other failure
+ * (offline, 5xx, ...); the page treats that as a hard error like every other page here does. No
+ * frontend changes should be needed once the backend route ships - see the propose_work filed from
+ * L42-431 for that follow-up.
+ */
+export async function getGif(idOrSlug: string): Promise<GifDetail | null> {
+  try {
+    const { data } = await apiFetch<{ data: GifDetail }>(`/gifs/${encodeURIComponent(idOrSlug)}`, {
+      next: { revalidate: 60 },
+    });
+    return data;
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    throw err;
+  }
+}

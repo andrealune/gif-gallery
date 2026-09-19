@@ -19,7 +19,14 @@ function parseOffset(raw: string | undefined): number {
 
 export async function generateMetadata({ searchParams }: SearchPageProps): Promise<Metadata> {
   const { q } = await searchParams;
-  return { title: q ? `Search results for "${q}"` : 'Search' };
+  return {
+    title: q ? `Search results for "${q}"` : 'Search',
+    // Query-string search-result pages are unbounded (one per possible query), near-duplicates of
+    // each other, and not something we want ranked directly - `/search` itself (no query) stays
+    // indexable as the entry point. This is a `noindex`, not a `nofollow`: crawlers should still
+    // follow links from a results page to the GIF/category pages it lists.
+    robots: q ? { index: false, follow: true } : undefined,
+  };
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
