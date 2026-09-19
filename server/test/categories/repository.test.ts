@@ -11,9 +11,17 @@ const CATEGORY_ROW = {
   name: 'Animals',
   slug: 'animals',
   description: 'Cute critters',
+  thumbnail_url: 'https://media.tenor.com/animals-thumb.gif',
   created_at: '2024-01-01T00:00:00.000Z',
   updated_at: '2024-01-02T00:00:00.000Z',
   gif_count: '3',
+};
+
+const CATEGORY_ROW_WITHOUT_THUMBNAIL = {
+  ...CATEGORY_ROW,
+  id: '33333333-3333-3333-3333-333333333333',
+  slug: 'other',
+  thumbnail_url: null,
 };
 
 const GIF_ROW = {
@@ -53,6 +61,7 @@ describe('CategoryRepository', () => {
             name: 'Animals',
             slug: 'animals',
             description: 'Cute critters',
+            thumbnailUrl: 'https://media.tenor.com/animals-thumb.gif',
             gifCount: 3,
             createdAt: '2024-01-01T00:00:00.000Z',
             updatedAt: '2024-01-02T00:00:00.000Z',
@@ -65,8 +74,22 @@ describe('CategoryRepository', () => {
 
       const [sql, params] = fake.query.mock.calls[0];
       expect(sql).toContain('LEFT JOIN gifs g ON g.category_id = c.id');
+      expect(sql).toContain('c.thumbnail_url');
       expect(sql).toContain('LIMIT $1 OFFSET $2');
       expect(params).toEqual([50, 0]);
+    });
+
+    it('maps a null thumbnail_url column to thumbnailUrl: null', async () => {
+      const fake = fakePool((sql) => {
+        if (sql.includes('FROM categories c')) return { rows: [CATEGORY_ROW_WITHOUT_THUMBNAIL] };
+        if (sql.includes('SELECT COUNT(*)::int AS count FROM categories')) return { rows: [{ count: 1 }] };
+        throw new Error(`unexpected query: ${sql}`);
+      });
+
+      const repo = new CategoryRepository(fake as never);
+      const page = await repo.listCategories({ limit: 50, offset: 0 });
+
+      expect(page.items[0].thumbnailUrl).toBeNull();
     });
   });
 
@@ -78,6 +101,7 @@ describe('CategoryRepository', () => {
       const result = await repo.findCategory('11111111-1111-1111-1111-111111111111');
 
       expect(result?.slug).toBe('animals');
+      expect(result?.thumbnailUrl).toBe('https://media.tenor.com/animals-thumb.gif');
       const [sql, params] = fake.query.mock.calls[0];
       expect(sql).toContain('WHERE c.id = $1');
       expect(params).toEqual(['11111111-1111-1111-1111-111111111111']);

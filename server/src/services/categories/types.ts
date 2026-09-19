@@ -5,6 +5,14 @@ export interface CategorySummary {
   name: string;
   slug: string;
   description: string | null;
+  /**
+   * URL of the category's thumbnail image, or `null` when none has been set. Backs L42-450
+   * (<CategoryCard> on the frontend), which falls back to an emoji placeholder whenever this is
+   * null (or absent from an older API response). Added by L42-462 - L42-449 had previously been
+   * marked "done" in the tracker without this field (or the underlying `thumbnail_url` column,
+   * see migration 0012) ever actually landing.
+   */
+  thumbnailUrl: string | null;
   /** Number of *active* (non-archived/flagged/deleted) gifs currently assigned to this category. */
   gifCount: number;
   createdAt: string;

@@ -19,6 +19,7 @@ interface CategoryRow extends QueryResultRow {
   name: string;
   slug: string;
   description: string | null;
+  thumbnail_url: string | null;
   created_at: Date | string;
   updated_at: Date | string;
   gif_count: string | number;
@@ -52,6 +53,7 @@ function mapCategory(row: CategoryRow): CategorySummary {
     name: row.name,
     slug: row.slug,
     description: row.description,
+    thumbnailUrl: row.thumbnail_url,
     gifCount: Number(row.gif_count),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -79,7 +81,7 @@ function mapGif(row: GifRow): GifSummary {
 }
 
 const CATEGORY_COLUMNS = `
-  c.id, c.name, c.slug, c.description, c.created_at, c.updated_at,
+  c.id, c.name, c.slug, c.description, c.thumbnail_url, c.created_at, c.updated_at,
   COUNT(g.id) FILTER (WHERE g.status = 'active') AS gif_count
 `;
 

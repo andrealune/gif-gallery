@@ -3,10 +3,40 @@
  * mounted under `/api`). It's a `NEXT_PUBLIC_*` var on purpose: pages fetch it server-side for the
  * initial render, but client components (e.g. the search-as-you-type box landing in L42-428) call
  * it directly from the browser too, so it has to be available on both sides.
+ *
+ * Because it is inlined into the client bundle it must always hold a **browser-reachable** origin.
+ * Where the API is reachable under a different name from inside the network (split deployments,
+ * preview environments - see `API_INTERNAL_BASE_URL` below and ADR 0001), use `resolveApiBaseUrl()`
+ * rather than this constant for anything that may run on the server.
  */
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001/api'
 ).replace(/\/+$/, '');
+
+/**
+ * Optional container-to-container base URL for the API, used **only** by the Next.js server
+ * (prerender during `next build`, server components, ISR revalidation) - L42-459, ADR 0001.
+ *
+ * In a preview/split deployment the browser reaches the API through a public hostname
+ * (`${apps.server.url}`) that does not resolve from inside the `web` container, while the container
+ * reaches it through an internal one (`${apps.server.internal}`). One variable cannot serve both
+ * sides: an internal value would be baked into the client bundle and break the browser, a public
+ * value breaks prerender/SSR (this is exactly the L42-456 failure). So the public URL stays in
+ * `NEXT_PUBLIC_API_BASE_URL` and the internal one is supplied here.
+ *
+ * Deliberately **not** `NEXT_PUBLIC_*`: it must stay a server-side runtime lookup and never be
+ * inlined into the client bundle. Unset (local development, and any deployment where a single URL
+ * works from both sides) behaves exactly as before: everything uses `API_BASE_URL`.
+ * Expected to include the `/api` prefix, like `NEXT_PUBLIC_API_BASE_URL`.
+ */
+export function resolveApiBaseUrl(): string {
+  // Browser: always the public, inlined value - the internal host is not reachable (and not shipped).
+  if (typeof window !== 'undefined') return API_BASE_URL;
+
+  // Read lazily so the value is a runtime lookup on the server rather than a build-time constant.
+  const internal = process.env.API_INTERNAL_BASE_URL?.trim();
+  return internal ? internal.replace(/\/+$/, '') : API_BASE_URL;
+}
 
 /**
  * Canonical, public origin this app is served from - used to build absolute URLs for
