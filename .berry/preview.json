@@ -8,26 +8,30 @@
       "start": "npm start",
       "port": 3001,
       "env": {
-        "NODE_ENV": "production",
+        "NODE_ENV": "development",
         "PORT": "3001",
         "DATABASE_URL": "postgres://postgres:preview@${services.db.host}:5432/gif_gallery",
         "CORS_ORIGIN": "${apps.web.url}",
         "SITE_URL": "${apps.web.url}",
         "STORAGE_PROVIDER": "local",
+        "STORAGE_LOCAL_DIR": "./storage",
+        "STORAGE_PUBLIC_BASE_URL": "${apps.server.url}/storage",
         "ELASTICSEARCH_SYNC_ENABLED": "false",
         "SEARCH_BACKEND": "postgres",
-        "GENERATION_SCHEDULER_ENABLED": "false"
+        "GENERATION_SCHEDULER_ENABLED": "false",
+        "GENERATION_RUN_ON_START": "false"
       }
     },
     {
       "name": "web",
       "dir": "web",
       "build": "npm run build",
-      "start": "npx next start -p 3000",
+      "start": "npx next start -p 3000 -H 0.0.0.0",
       "port": 3000,
       "primary": true,
       "env": {
         "NEXT_PUBLIC_API_BASE_URL": "${apps.server.url}/api",
+        "API_INTERNAL_BASE_URL": "${apps.server.internal}/api",
         "NEXT_PUBLIC_SITE_URL": "${apps.web.url}"
       }
     }
