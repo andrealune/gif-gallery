@@ -1,0 +1,66 @@
+{
+  "_comment": "Proposed seed data for the category -> prompt mapping described in docs/specs/ai-generation-prompts-spec.md (L42-423). DRAFT: category list and prompt wording are not yet confirmed by product-lead (see spec gaps G1 and G4). Format is intentionally implementation-agnostic (no DB-specific types) so Database Engineer/Software Architect can map it to whatever schema is approved.",
+  "version": "0.1-draft",
+  "categories": [
+    {
+      "category": "Animals",
+      "prompts": [
+        "Cute animated animal doing something funny, colorful, looping GIF style, family-friendly"
+      ]
+    },
+    {
+      "category": "Reactions",
+      "prompts": [
+        "Exaggerated, comedic human facial expression reacting in surprise or joy, looping GIF style"
+      ]
+    },
+    {
+      "category": "Sports",
+      "prompts": [
+        "Dynamic, energetic moment from a fun sports scene, cartoon style, looping GIF style"
+      ]
+    },
+    {
+      "category": "Food",
+      "prompts": [
+        "Playful, appetizing animated food or drink doing something whimsical, looping GIF style"
+      ]
+    },
+    {
+      "category": "Celebration",
+      "prompts": [
+        "Joyful celebration scene with confetti, dancing, or fireworks, looping GIF style"
+      ]
+    },
+    {
+      "category": "Love",
+      "prompts": [
+        "Sweet, wholesome animated scene expressing affection, looping GIF style"
+      ]
+    },
+    {
+      "category": "Memes",
+      "prompts": [
+        "Absurd, comedic pop-culture-style scene, exaggerated expressions, looping GIF style"
+      ]
+    },
+    {
+      "category": "Nature",
+      "prompts": [
+        "Serene or whimsical animated nature scene (weather, plants, landscapes), looping GIF style"
+      ]
+    },
+    {
+      "category": "Technology",
+      "prompts": [
+        "Fun, futuristic animated scene with gadgets or robots, looping GIF style"
+      ]
+    },
+    {
+      "category": "Dance",
+      "prompts": [
+        "Energetic animated character dancing, colorful background, looping GIF style"
+      ]
+    }
+  ]
+}

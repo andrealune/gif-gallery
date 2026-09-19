@@ -6,6 +6,8 @@ import path from 'path';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes';
+import { robotsRouter } from './routes/robots';
+import { sitemapRouter } from './routes/sitemap';
 
 export function createApp(): Express {
   const app = express();
@@ -21,12 +23,23 @@ export function createApp(): Express {
     app.use(morgan(env.isProduction ? 'combined' : 'dev'));
   }
 
-  // Local development only: serves files written by the "local" storage
-  // driver so GIF URLs resolve without any external storage. Production
-  // uses the S3 + CloudFront setup instead (STORAGE_PROVIDER=s3), which
-  // serves objects directly from the CDN, not through this app.
+  // Mounted at the root (not under /api): crawlers and search engines
+  // expect /robots.txt and /sitemap.xml at the site origin (L42-433).
+  app.use(robotsRouter);
+  app.use(sitemapRouter);
+
+  // Local development only: serves whatever the local storage driver
+  // (src/storage, src/services/storage - consumed by the batch generation
+  // scheduler, L42-424) has written to STORAGE_LOCAL_DIR, e.g. an
+  // AI-generated GIF's `url`. This only applies to the 'local' storage
+  // provider; production uses the S3 + CloudFront setup instead
+  // (STORAGE_PROVIDER=s3, see infra/terraform/storage), which serves
+  // objects directly from the CDN, not through this app.
   if (env.storage.provider === 'local') {
-    app.use('/storage', express.static(path.resolve(process.cwd(), env.storage.localDir)));
+    app.use(
+      '/storage',
+      express.static(path.resolve(process.cwd(), env.storage.localDir), { index: false, dotfiles: 'ignore' })
+    );
   }
 
   app.use('/api', apiRouter);
