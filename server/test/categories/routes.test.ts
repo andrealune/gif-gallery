@@ -10,6 +10,7 @@ const CATEGORY: CategorySummary = {
   name: 'Animals',
   slug: 'animals',
   description: 'Cute critters',
+  thumbnailUrl: 'https://media.tenor.com/animals-thumb.gif',
   gifCount: 2,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-02T00:00:00.000Z',

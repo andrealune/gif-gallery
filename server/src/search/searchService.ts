@@ -15,13 +15,19 @@
  * display column into the index and keeping two copies in sync. At the
  * result set sizes here (`limit`, capped well below the index size) it's a
  * single indexed `WHERE id = ANY($1)` lookup, not a per-row query.
+ *
+ * See `postgresSearchService.ts` for the Postgres-only fallback selected
+ * when Elasticsearch is not configured/reachable (L42-463, `backend.ts`) -
+ * it implements the same `GifSearchQueryServiceLike` contract in one query
+ * instead of two, using the row mapping shared via `gifRowMapper.ts`.
  */
 import type { Client } from '@elastic/elasticsearch';
 import type { SearchTotalHits } from '@elastic/elasticsearch/lib/api/types';
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool } from 'pg';
 import { pool } from '../db/pool';
 import type { GifSummary } from '../services/categories';
 import { getElasticsearchClient } from './client';
+import { GIF_COLUMNS, type GifRow, mapGif } from './gifRowMapper';
 import { GIFS_ALIAS } from './pipeline';
 import { buildSearchRequest, type GifSearchQueryParams } from './searchQuery';
 
@@ -37,54 +43,6 @@ export interface SearchGifsResult {
 /** What `routes/search.ts` depends on - lets tests supply a fake instead of hitting real ES/Postgres. */
 export interface GifSearchQueryServiceLike {
   search(params: GifSearchQueryParams): Promise<SearchGifsResult>;
-}
-
-interface GifRow extends QueryResultRow {
-  id: string;
-  source: string;
-  title: string;
-  description: string | null;
-  category_id: string | null;
-  url: string;
-  thumbnail_url: string | null;
-  width: number | null;
-  height: number | null;
-  file_size_bytes: string | number | null;
-  duration_ms: number | null;
-  mime_type: string;
-  status: string;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-const GIF_COLUMNS = `
-  id, source, title, description, category_id, url, thumbnail_url,
-  width, height, file_size_bytes, duration_ms, mime_type, status,
-  created_at, updated_at
-`;
-
-function toIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function mapGif(row: GifRow): GifSummary {
-  return {
-    id: row.id,
-    source: row.source,
-    title: row.title,
-    description: row.description,
-    categoryId: row.category_id,
-    url: row.url,
-    thumbnailUrl: row.thumbnail_url,
-    width: row.width,
-    height: row.height,
-    fileSizeBytes: row.file_size_bytes === null ? null : Number(row.file_size_bytes),
-    durationMs: row.duration_ms,
-    mimeType: row.mime_type,
-    status: row.status,
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at),
-  };
 }
 
 function extractTotal(total: SearchTotalHits | number | undefined): number {

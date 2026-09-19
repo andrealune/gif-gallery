@@ -1,4 +1,4 @@
-import { API_BASE_URL, DEFAULT_PAGE_SIZE } from './config';
+import { DEFAULT_PAGE_SIZE, resolveApiBaseUrl } from './config';
 import type { CategorySummary, GifSummary, Page, PaginationParams } from './types';
 
 /**
@@ -43,7 +43,10 @@ function toPage<T>(envelope: ListEnvelope<T>): Page<T> {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  // Resolved per request, not at module load: on the Next.js server this may be an internal,
+  // container-to-container base URL (API_INTERNAL_BASE_URL) while the browser keeps the public one
+  // - see lib/config.ts and ADR 0001 (docs/adr/0001-preview-environment-topology.md).
+  const url = `${resolveApiBaseUrl()}${path}`;
   let res: Response;
 
   try {

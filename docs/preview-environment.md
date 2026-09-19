@@ -123,3 +123,45 @@ as reviewer):
    the health/ordering gate covers. Left to `frontend-engineer` to decide if
    it's worth the complexity given the ordering fix already removes the
    guaranteed race.
+
+---
+
+## Update (L42-459, ADR 0001): two API URLs, and no build-time wait
+
+Architecture review of the config above, against the repo as it stands now, changed two things.
+The full reasoning, options and consequences are in
+[`docs/adr/0001-preview-environment-topology.md`](adr/0001-preview-environment-topology.md);
+this is the short version.
+
+**1. `${apps.server.url}` alone is not enough — the server side needs the internal URL.**
+`NEXT_PUBLIC_API_BASE_URL` is inlined into the client bundle, so it has to be the *browser-facing*
+preview hostname. But `/`, `/category/[slug]`, `/gif/[slug]` and `/search` also call the API from
+inside the `web` container, and that hostname does not resolve there — which is the
+`Could not reach the gallery API (http://p-...-server.preview.localhost:4000/api/...)` message from
+L42-456, on every request rather than only at build time. `web` therefore now gets **both**:
+
+- `NEXT_PUBLIC_API_BASE_URL=${apps.server.url}/api` — the browser,
+- `API_INTERNAL_BASE_URL=${apps.server.internal}/api` — its own Node process.
+
+`web/src/lib/config.ts#resolveApiBaseUrl()` picks between them (browser: always the public one;
+server: the internal one when set), and `web/src/lib/api.ts` resolves it per request.
+`API_INTERNAL_BASE_URL` is intentionally not a `NEXT_PUBLIC_*` var and stays out of the client
+bundle (verified: 0 occurrences under `.next/static`). Unset, behaviour is exactly as before.
+
+**2. The ordering race described above no longer exists, so nothing waits for the API.**
+`web/src/app/page.tsx` now sets `export const dynamic = 'force-dynamic'` (the frontend half of the
+L42-456 fix), and the other data routes read `searchParams`, so `next build`'s route table marks
+every data route `ƒ` (server-rendered on demand) and `next build` makes no API calls at all. The
+"`server` must be built, migrated and started before `web` builds" requirement in the section above
+is therefore no longer load-bearing — the preview only needs the API to be up when a *request*
+arrives. A `web/scripts/wait-for-api.mjs` build-time gate was written for this task and then
+removed for the same reason; if a route ever becomes statically prerendered with API data again,
+reintroduce a bounded, never-failing wait (or keep the route dynamic) and update the ADR.
+
+**Also changed in `.berry/preview.json`:** `NODE_ENV=development` for `server` (npm omits
+`devDependencies` when `NODE_ENV=production`, and `build`/`migrate:up` need `typescript`/`tsx`),
+`STORAGE_LOCAL_DIR`/`STORAGE_PUBLIC_BASE_URL` so locally stored GIF URLs are browser-reachable,
+`GENERATION_RUN_ON_START=false`, and `-H 0.0.0.0` on `next start`. Elasticsearch stays out of the
+preview (`ELASTICSEARCH_SYNC_ENABLED=false`), which also skips the startup reachability check in
+`server/src/index.ts`; the cost is that `/api/search` and the typeahead show their error state in
+previews until search can fall back to Postgres.
