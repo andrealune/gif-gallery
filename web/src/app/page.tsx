@@ -6,9 +6,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SearchForm } from '@/components/search/SearchForm';
 import { SITE_DESCRIPTION } from '@/lib/config';
+import { buildKeywords } from '@/lib/seo';
 
 export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
+  keywords: buildKeywords('browse gifs', 'gif categories', 'free gifs'),
   alternates: { canonical: '/' },
   openGraph: { description: SITE_DESCRIPTION, url: '/' },
 };

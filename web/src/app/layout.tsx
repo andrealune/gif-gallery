@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/config';
+import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_URL } from '@/lib/config';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -18,6 +18,9 @@ export const metadata: Metadata = {
     template: `%s · ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
+  // Baseline `<meta name="keywords">` (L42-434); pages with more specific terms (a category name,
+  // a gif title, ...) override this via `buildKeywords()` (`lib/seo.ts`) rather than dropping it.
+  keywords: SITE_KEYWORDS,
   openGraph: {
     type: 'website',
     siteName: SITE_NAME,

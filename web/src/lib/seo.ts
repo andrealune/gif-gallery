@@ -1,4 +1,4 @@
-import { SITE_NAME, SITE_URL } from './config';
+import { SITE_KEYWORDS, SITE_NAME, SITE_URL } from './config';
 import type { GifDetail } from './api';
 import type { CategorySummary } from './types';
 
@@ -61,4 +61,23 @@ export function gifOgImage(gif: GifDetail): { url: string; width?: number; heigh
     ...(gif.height ? { height: gif.height } : {}),
     alt: gifOgTitle(gif),
   };
+}
+
+/**
+ * Merges page-specific terms (a category name, the words in a GIF title, ...) with the site-wide
+ * baseline (`SITE_KEYWORDS`) into the `<meta name="keywords">` list for a page (L42-434).
+ * Lowercases, trims, drops empties/duplicates, and caps the count - search engines that still
+ * parse this tag at all penalize (or simply ignore) obviously stuffed lists.
+ */
+export function buildKeywords(...terms: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const term of [...terms, ...SITE_KEYWORDS]) {
+    const value = term?.trim().toLowerCase();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    keywords.push(value);
+    if (keywords.length >= 15) break;
+  }
+  return keywords;
 }
