@@ -19,7 +19,8 @@
     "migrate:status": "tsx src/db/migrate.ts status",
     "search:create-index": "tsx src/search/createIndex.ts",
     "search:reindex": "tsx src/search/reindex.ts",
-    "search:sync": "tsx src/search/sync.ts"
+    "search:sync": "tsx src/search/sync.ts",
+    "seo:submit-indexnow": "tsx src/seo/submitIndexNow.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1136.0",

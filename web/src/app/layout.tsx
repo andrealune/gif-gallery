@@ -4,7 +4,14 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_URL } from '@/lib/config';
+import {
+  BING_SITE_VERIFICATION,
+  GOOGLE_SITE_VERIFICATION,
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_NAME,
+  SITE_URL,
+} from '@/lib/config';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -38,6 +45,13 @@ export const metadata: Metadata = {
       template: `%s · ${SITE_NAME}`,
     },
     description: SITE_DESCRIPTION,
+  },
+  // Search-console ownership verification (L42-435); omitted entirely (Next.js drops the tag)
+  // until the corresponding env var is actually set - see lib/config.ts for where to get each
+  // code from and why there's nothing to change here once someone does.
+  verification: {
+    ...(GOOGLE_SITE_VERIFICATION ? { google: GOOGLE_SITE_VERIFICATION } : {}),
+    ...(BING_SITE_VERIFICATION ? { other: { 'msvalidate.01': BING_SITE_VERIFICATION } } : {}),
   },
 };
 
