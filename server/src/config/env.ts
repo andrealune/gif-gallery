@@ -157,6 +157,8 @@ export const env = {
     // a deploy; leave off in normal operation so restarts don't cause an
     // unplanned extra run.
     runOnStart: toBool(process.env.GENERATION_RUN_ON_START, false),
+  },
+
   elasticsearch: {
     // GIF search cluster - see src/search and docs/elasticsearch.md (L42-418).
     // Local dev: docker-compose.yml starts a single-node cluster at this
