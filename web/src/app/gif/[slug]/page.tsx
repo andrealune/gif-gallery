@@ -158,7 +158,7 @@ export default async function GifPage({ params }: GifPageProps) {
             <span aria-hidden="true">/</span>
           </>
         ) : null}
-        <span className="max-w-[16rem] truncate text-slate-700">{title}</span>
+        <span className="min-w-0 max-w-[16rem] truncate text-slate-700">{title}</span>
       </nav>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
