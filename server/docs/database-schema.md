@@ -4,12 +4,6 @@ PostgreSQL 13+ schema for the GIF gallery catalog: gifs, their category/tags, an
 ("where did this GIF actually come from") for third-party/AI/upload sources. Implemented as versioned
 SQL migrations in `../migrations/`, applied with `../src/db/migrate.ts` (`npm run migrate:up`).
 
-> **Note on file count in `migrations/`:** the authoring tooling used for this change has no way to
-> delete a previously saved file. `0001_enable_extensions` through `0008_seed_default_categories` are
-> the real, final, tested migration set described below. Any other file in that directory is an
-> obsolete draft explicitly marked `OBSOLETE DRAFT STUB` in its header comment and is a harmless no-op
-> (`SELECT 1;`) -- safe to ignore, and safe to actually delete via a normal `git rm` in review/cleanup.
-
 ## Entity-relationship overview
 
 ```
@@ -196,8 +190,7 @@ rollback notes in each file say.
 Postgres) instance, exercises the core constraints (blank-title rejection, third-party uniqueness,
 cascading deletes, generated `search_vector`), then rolls every `down.sql` back in reverse order and
 asserts the schema is empty again. Run it with `npm test` (or `npx vitest run test/migrations.test.ts`).
-It does not require a real Postgres server, so it runs in CI with no extra services, and it exercises the
-obsolete draft stubs too (they are simply harmless no-ops alongside the real migrations).
+It does not require a real Postgres server, so it runs in CI with no extra services.
 
 `src/db/migrate.ts` (the runner used against a real database) is not exercised by that test -- PGlite
 does not speak the Postgres wire protocol `pg.Client` uses -- so it should also be smoke-tested against
