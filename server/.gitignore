@@ -3,4 +3,7 @@ dist/
 .env
 *.log
 coverage/
-storage/
+# Local-development-only storage driver output (STORAGE_LOCAL_DIR default);
+# anchored to the server/ root so it doesn't also match src/storage (the
+# storage abstraction's source code).
+/storage/

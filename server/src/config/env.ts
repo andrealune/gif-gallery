@@ -28,11 +28,13 @@ function toBool(value: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+const port = toInt(process.env.PORT, 3001);
+
 export const env = {
   nodeEnv: optional('NODE_ENV', 'development'),
   isProduction: optional('NODE_ENV', 'development') === 'production',
   isTest: optional('NODE_ENV', 'development') === 'test',
-  port: toInt(process.env.PORT, 3001),
+  port,
   corsOrigin: optional('CORS_ORIGIN', '*'),
 
   db: {
@@ -54,14 +56,33 @@ export const env = {
   },
 
   storage: {
-    // Consumed by the file storage setup in a later task (L42-425).
+    // "local" (default, filesystem) or "s3" (AWS S3 or an S3-compatible
+    // service such as GCS's interop endpoint, MinIO, R2). See
+    // server/src/storage/ and infra/terraform/storage for the S3 + CDN setup.
     provider: optional('STORAGE_PROVIDER', 'local'),
+
+    // -- local driver --
     localDir: optional('STORAGE_LOCAL_DIR', './storage'),
+    publicBaseUrl: optional('STORAGE_PUBLIC_BASE_URL', `http://localhost:${port}/storage`),
+
+    // -- s3 driver --
     s3Bucket: optional('S3_BUCKET'),
-    s3Region: optional('S3_REGION'),
+    s3Region: optional('S3_REGION', 'us-east-1'),
     s3AccessKeyId: optional('S3_ACCESS_KEY_ID'),
     s3SecretAccessKey: optional('S3_SECRET_ACCESS_KEY'),
+    // Optional: only set for S3-compatible services (MinIO, GCS interop, R2).
+    s3Endpoint: optional('S3_ENDPOINT'),
+    s3ForcePathStyle: toBool(process.env.S3_FORCE_PATH_STYLE, false),
+
+    // Public CDN domain (e.g. the CloudFront distribution from
+    // infra/terraform/storage) prefixed to object keys to build public
+    // GIF URLs. Falls back to a direct S3 URL when unset.
+    cdnBaseUrl: optional('CDN_BASE_URL'),
   },
 };
 
 export type Env = typeof env;
+
+if (env.isProduction && env.storage.provider === 's3' && !env.storage.s3Bucket) {
+  throw new Error('S3_BUCKET is required in production when STORAGE_PROVIDER=s3');
+}
