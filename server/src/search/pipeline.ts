@@ -4,12 +4,12 @@
  * old versions. See `docs/elasticsearch.md` for the operational rationale
  * (why an alias, how to roll back, how this scales to 100k documents).
  *
- * This module intentionally only *builds* an index end to end (used by the
- * `search:reindex` CLI for the initial bulk load / a full rebuild). Keeping
- * an already-live index in sync with individual gif create/update/delete
- * calls is the ongoing "database-to-Elasticsearch sync" (L42-419); that
- * work can reuse `toGifDocument` and `GIFS_ALIAS`/index helpers from here
- * rather than duplicating them.
+ * This module *builds* an index end to end (used by the `search:reindex`
+ * CLI for the initial bulk load / a full rebuild). Keeping an already-live
+ * index in sync with individual gif create/update/delete calls as they
+ * happen, rather than only via a full rebuild, is `syncJob.ts`'s job
+ * (L42-419) -- it reuses `toGifDocument` and `GIFS_ALIAS`/index helpers from
+ * here rather than duplicating them.
  */
 import type { Client } from '@elastic/elasticsearch';
 import { env } from '../config/env';
