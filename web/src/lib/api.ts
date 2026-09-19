@@ -111,11 +111,10 @@ export async function getCategoryGifs(
 }
 
 /**
- * `GET /api/search?q=` - not implemented by the backend yet (see server/src/routes/index.ts,
- * which lists it as a "later task"). This already speaks the same `{ data, pagination }` /
- * `limit`+`offset` contract every other list endpoint uses, so the search results page (L42-428)
- * works unchanged the moment that route ships. Until then this throws an `ApiError`; the search
- * page catches it and renders a "search isn't available yet" state instead of crashing.
+ * `GET /api/search?q=&limit=&offset=` (backend: `server/src/routes/search.ts`, L42-420) - ranked
+ * full-text search over the `gifs` index, hydrated to the same `GifSummary` shape every other
+ * list endpoint returns. Speaks the same `{ data, pagination }` / `limit`+`offset` envelope, so
+ * the search results page (L42-428) needed no changes once the route shipped.
  */
 export async function searchGifs(q: string, params: PaginationParams = {}): Promise<Page<GifSummary>> {
   const query = buildQuery({

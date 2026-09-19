@@ -27,6 +27,12 @@ export {
   type GifSearchSyncRepositoryLike,
   type GifSyncCursor,
 } from './repository';
+export { buildSearchRequest, type GifSearchQueryParams } from './searchQuery';
+export {
+  GifSearchQueryService,
+  type GifSearchQueryServiceLike,
+  type SearchGifsResult,
+} from './searchService';
 export {
   createGifSearchSyncJob,
   runSyncBatch,
