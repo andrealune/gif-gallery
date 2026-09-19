@@ -1,0 +1,45 @@
+name: gif-gallery-search
+
+# Local development Elasticsearch cluster for GIF search (L42-418).
+#
+# Single-node, security disabled (dev only - never expose this
+# configuration outside a developer machine or CI runner) so there is no
+# extra credential dance to get `npm run search:create-index` / `npm run
+# search:reindex` working locally. Production/staging should point
+# ELASTICSEARCH_NODE at a managed or properly secured cluster instead of
+# reusing this file - see docs/elasticsearch.md.
+#
+# Usage (from server/):
+#   docker compose up -d          # start
+#   docker compose logs -f        # follow logs / wait for "started"
+#   docker compose down           # stop (add -v to also delete the volume/data)
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.2
+    container_name: gif-gallery-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      # Keep the heap small - this is a dev/demo-scale cluster (10k-100k
+      # documents, a few tens of MB of index data), not a production sizing.
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - '9200:9200'
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9200/_cluster/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+volumes:
+  elasticsearch-data:

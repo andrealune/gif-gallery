@@ -24,11 +24,13 @@ server/
     services/
       ai/          OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
       categories/  category listing/metadata + gifs-by-category reads (CategoryRepository)
+    search/      Elasticsearch client, gifs index mapping, indexing pipeline (docs/elasticsearch.md)
     utils/       shared request helpers (pagination.ts)
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
-  docs/          architecture/data documentation (database-schema.md)
+  docs/          architecture/data documentation (database-schema.md, elasticsearch.md)
+  docker-compose.yml  local Elasticsearch cluster for GIF search
   .env.example   documented list of required/optional env vars
 ```
 
@@ -75,6 +77,7 @@ See `.env.example` for the full list. Highlights:
 - `GIF_KEN_BURNS_ZOOM`, `GIF_KEN_BURNS_DURATION_MS` – single-image pan/zoom animation tuning
 - `GIF_CONVERSION_TIMEOUT_MS`, `GIF_MAX_INPUT_BYTES`, `GIF_BATCH_CONCURRENCY` – pipeline safety/performance limits
 - `STORAGE_PROVIDER`, `STORAGE_LOCAL_DIR`, `S3_*` – reserved for the file storage setup (see L42-425)
+- `ELASTICSEARCH_NODE`, `ELASTICSEARCH_GIFS_INDEX`, `ELASTICSEARCH_API_KEY`/`USERNAME`/`PASSWORD` – GIF search cluster (see docs/elasticsearch.md)
 
 ## Health checks
 
