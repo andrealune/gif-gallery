@@ -1,0 +1,46 @@
+{
+  "apps": [
+    {
+      "name": "server",
+      "dir": "server",
+      "build": "npm run build",
+      "migrate": "npm run migrate:up",
+      "start": "npm start",
+      "port": 3001,
+      "env": {
+        "NODE_ENV": "production",
+        "PORT": "3001",
+        "DATABASE_URL": "postgres://postgres:preview@${services.db.host}:5432/gif_gallery",
+        "CORS_ORIGIN": "${apps.web.url}",
+        "SITE_URL": "${apps.web.url}",
+        "STORAGE_PROVIDER": "local",
+        "ELASTICSEARCH_SYNC_ENABLED": "false",
+        "GENERATION_SCHEDULER_ENABLED": "false"
+      }
+    },
+    {
+      "name": "web",
+      "dir": "web",
+      "build": "npm run build",
+      "start": "npx next start -p 3000",
+      "port": 3000,
+      "primary": true,
+      "env": {
+        "NEXT_PUBLIC_API_BASE_URL": "${apps.server.url}/api",
+        "NEXT_PUBLIC_SITE_URL": "${apps.web.url}"
+      }
+    }
+  ],
+  "services": [
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "port": 5432,
+      "env": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "preview",
+        "POSTGRES_DB": "gif_gallery"
+      }
+    }
+  ]
+}
