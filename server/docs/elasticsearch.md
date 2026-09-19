@@ -18,6 +18,8 @@ Code lives in `src/search/`:
 | `pipeline.ts`          | Index lifecycle: create index, bulk load, alias swap, prune old versions  |
 | `createIndex.ts`       | CLI: bootstrap an empty index + alias (`npm run search:create-index`)     |
 | `reindex.ts`           | CLI: full (re)build from Postgres (`npm run search:reindex`)              |
+| `syncJob.ts`           | Incremental sync job: keeps the index in step with individual gif writes (L42-419) |
+| `sync.ts`              | CLI: runs the sync job standalone (`npm run search:sync`)                 |
 
 ## Running a cluster
 
@@ -151,20 +153,69 @@ curl -X POST "$ELASTICSEARCH_NODE/_aliases" -H 'content-type: application/json' 
 shows the current target; `GET _aliases` or `GET gifs_v*` lists every
 version still on disk.)
 
-### Keeping the index in sync going forward
+### Keeping the index in sync going forward (L42-419)
 
-This task builds the cluster, the schema and the bulk-load pipeline only.
-Keeping the index in sync with individual gif create/update/delete calls as
-they happen (rather than only via a full rebuild) is tracked separately as
-**L42-419 - Implement database-to-Elasticsearch sync**, which should reuse
-`toGifDocument`/`GIFS_ALIAS` and the client from this module rather than
-duplicating them.
+`reindex.ts` rebuilds the whole index from scratch; it is not run on every
+write. Staying in sync with individual gif create/update/(soft-)delete
+calls as they happen is `syncJob.ts`'s job:
+
+- It polls `GifSearchSourceRepository#fetchChanges` (keyset-paginated on
+  `(updated_at, id)`, so a full sweep of the change history is O(1) per page
+  like the reindex path) for every gif whose `updated_at` moved past an
+  in-memory cursor.
+- A gif with `status = 'active'` is upserted (`toGifDocument` -> index by
+  `id`, so re-processing the same row is a no-op-safe overwrite).
+- A gif in any other status (archived/flagged/soft-deleted) is deleted from
+  the index by `id` (a 404 - already absent - is treated as success, not a
+  failure).
+- Because it drives off `updated_at` rather than being called from each
+  write site, it automatically covers every current and future way a gif
+  row changes (today: the Tenor importer's insert/update; later: an admin
+  API, AI-generated uploads, ...) without that code needing to remember to
+  notify a search index.
+
+This was built as a small **custom job scheduler** (a polling loop, in
+`createGifSearchSyncJob`) rather than wiring up Logstash's JDBC input
+plugin: the app already owns a typed Elasticsearch client and document
+mapper in `src/search/`, and at the 10k-100k document scale this catalog
+targets, a plain polling loop with no extra service to deploy/operate is
+simpler and keeps the document shape defined in one place
+(`documentMapper.ts`) instead of duplicated into a separate Logstash
+pipeline config.
+
+**Running it.** By default it runs inline inside the API process
+(`src/index.ts`, started right after the initial DB connectivity check,
+stopped on graceful shutdown). To run it as its own process/worker instead,
+set `ELASTICSEARCH_SYNC_ENABLED=false` on the API process and run:
+
+```bash
+cd server
+npm run search:sync
+```
+
+Running it in both places at once is harmless (each keeps its own
+in-memory cursor and every operation is idempotent) but redundant.
+
+**Tuning** (see `.env.example`): `ELASTICSEARCH_SYNC_INTERVAL_MS` (poll
+interval once a poll finds nothing new, default 5s), `ELASTICSEARCH_SYNC_BATCH_SIZE`
+(rows per page, default 200), `ELASTICSEARCH_SYNC_STARTUP_OVERLAP_MS`
+(how far back the cursor starts on boot, default 60s, so a restart
+re-covers a window of recent changes rather than only changes from the
+moment it comes back up).
+
+**Limits / when to still run `search:reindex`.** The cursor lives in
+memory only - a page crossing a restart is harmless (upserts/deletes are
+idempotent, so the `startupOverlapMs` window is simply re-applied), but a
+gap *larger* than that window (extended downtime, a direct SQL write, a
+migration backfill) is not automatically caught up. Run
+`npm run search:reindex` periodically (e.g. a nightly cron) as the
+reconciliation safety net, the same way it already is for the initial load.
 
 ## Testing
 
 `test/search/` covers the pure logic that does not require a live cluster:
-document mapping (Postgres row -> ES document) and the alias/version naming
-math used by the pipeline (via a fake client, same pattern as
+document mapping (Postgres row -> ES document), the alias/version naming
+math used by the pipeline, and the sync job's batching/cursor/upsert-vs-
+delete logic (all via a fake client, same pattern as
 `test/tenor/client.test.ts`'s fake `fetch`). There is no integration test
-against a real Elasticsearch cluster in CI yet - see the follow-up note
-below.
+against a real Elasticsearch cluster in CI yet.

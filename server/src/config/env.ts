@@ -153,6 +153,20 @@ export const env = {
     indexReplicas: toInt(process.env.ELASTICSEARCH_INDEX_REPLICAS, 0),
     // Rows fetched from Postgres per page during a reindex (search:reindex).
     reindexBatchSize: toInt(process.env.ELASTICSEARCH_REINDEX_BATCH_SIZE, 500),
+
+    // Incremental create/update/delete sync job - see src/search/syncJob.ts
+    // (L42-419). Runs inline in the API process by default; set to false to
+    // run it only via the standalone `npm run search:sync` worker instead.
+    syncEnabled: toBool(process.env.ELASTICSEARCH_SYNC_ENABLED, true),
+    // How long to wait between polls once a poll comes back with nothing new.
+    syncIntervalMs: toInt(process.env.ELASTICSEARCH_SYNC_INTERVAL_MS, 5000),
+    // Changed rows fetched from Postgres per page while syncing.
+    syncBatchSize: toInt(process.env.ELASTICSEARCH_SYNC_BATCH_SIZE, 200),
+    // On startup, the job's cursor starts this far in the past (rather than
+    // at "now") so changes racing with process startup/restart are still
+    // picked up; re-processing a row already synced is harmless (idempotent
+    // upsert/delete by id).
+    syncStartupOverlapMs: toInt(process.env.ELASTICSEARCH_SYNC_STARTUP_OVERLAP_MS, 60000),
   },
 };
 

@@ -18,7 +18,8 @@
     "migrate:down": "tsx src/db/migrate.ts down",
     "migrate:status": "tsx src/db/migrate.ts status",
     "search:create-index": "tsx src/search/createIndex.ts",
-    "search:reindex": "tsx src/search/reindex.ts"
+    "search:reindex": "tsx src/search/reindex.ts",
+    "search:sync": "tsx src/search/sync.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.19.2",
