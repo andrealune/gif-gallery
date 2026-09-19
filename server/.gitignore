@@ -3,8 +3,8 @@ dist/
 .env
 *.log
 coverage/
-# Only the runtime local-storage upload directory at the server root
-# (STORAGE_LOCAL_DIR, see src/services/storage) - anchored so it doesn't
-# also match source directories named "storage" (src/services/storage,
-# test/storage).
+# Local-development-only storage driver output (STORAGE_LOCAL_DIR default,
+# consumed by src/storage's "local" provider and the older
+# src/services/storage helper); anchored to the server/ root so it doesn't
+# also match source directories named "storage" (src/storage, src/services/storage, test/storage).
 /storage/

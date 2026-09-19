@@ -10,6 +10,15 @@ export interface CategorySummary {
   description: string | null;
   /** Number of active gifs currently assigned to this category. */
   gifCount: number;
+  /**
+   * URL of the category's representative thumbnail (the most recent active gif in the
+   * category), or `null` when the category has no active gifs. Added in L42-450 to mirror the
+   * backend contract from L42-449 (server/src/services/categories/types.ts). Nullable and
+   * additive - existing consumers of CategorySummary are unaffected. Absent (`undefined`) is
+   * treated the same as `null` by <CategoryCard> so this stays a no-op if the API response
+   * predates the backend rollout.
+   */
+  thumbnailUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -24,6 +24,10 @@ server/
     services/
       ai/          OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
       categories/  category listing/metadata + gifs-by-category reads (CategoryRepository)
+      generation/  batch scheduler that generates, converts and stores a GIF per category (L42-424)
+      gif/         image(s) -> animated GIF conversion pipeline (ffmpeg), see below
+      storage/     GifStorage adapter used by the generation scheduler; local disk or (STORAGE_PROVIDER=s3) src/storage
+    storage/     StorageClient abstraction for generated/third-party GIFs: local disk or S3 + CDN (L42-425)
     search/      Elasticsearch client, gifs index mapping, indexing pipeline (docs/elasticsearch.md)
     utils/       shared request helpers (pagination.ts)
     app.ts       Express app factory (used by tests and index.ts)
@@ -76,13 +80,19 @@ See `.env.example` for the full list. Highlights:
   defaults for the image-to-GIF conversion pipeline (see below)
 - `GIF_KEN_BURNS_ZOOM`, `GIF_KEN_BURNS_DURATION_MS` – single-image pan/zoom animation tuning
 - `GIF_CONVERSION_TIMEOUT_MS`, `GIF_MAX_INPUT_BYTES`, `GIF_BATCH_CONCURRENCY` – pipeline safety/performance limits
-- `STORAGE_PROVIDER`, `STORAGE_LOCAL_DIR`, `S3_*` – reserved for the file storage setup (see L42-425)
+- `STORAGE_PROVIDER` (`local` or `s3`), `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_BASE_URL` – file storage for
+  generated/third-party GIFs (`src/storage`); `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE`, `CDN_BASE_URL` – used when
+  `STORAGE_PROVIDER=s3` (also works with GCS/MinIO/R2 via `S3_ENDPOINT`); see
+  `../infra/terraform/storage` for the S3 bucket + CloudFront CDN this pairs with in staging/prod
 - `ELASTICSEARCH_NODE`, `ELASTICSEARCH_GIFS_INDEX`, `ELASTICSEARCH_API_KEY`/`USERNAME`/`PASSWORD` – GIF search cluster (see docs/elasticsearch.md)
 
 ## Health checks
 
 - `GET /api/health` – process liveness (always 200 while the server is up)
 - `GET /api/health/db` – verifies the database pool can reach Postgres (200/503)
+- `GET /api/health/storage` – verifies the configured storage backend (local disk or S3) is
+  reachable/writable (200/503)
 
 ## Categories (`src/routes/categories.ts`, `src/services/categories`)
 
@@ -155,7 +165,8 @@ const { gif, width, height, frameCount } = await gifConverter.convert(
   [imageInputFromGeneratedImage(generated.images[0])],
   { width: 480 }
 );
-// gif is a Buffer of GIF89a bytes, ready to hand to the file storage layer (L42-425).
+// gif is a Buffer of GIF89a bytes, ready to hand to the file storage layer (src/storage, L42-425).
+// e.g. await storage.putObject({ key: `${randomUUID()}.gif`, body: gif, contentType: 'image/gif' })
 ```
 
 Two conversion modes, chosen automatically from the number of frames given:
