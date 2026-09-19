@@ -24,9 +24,22 @@ export class TenorGifRepository {
         [gif.id]
       );
 
-      const outcome = existing.rows[0]
-        ? await this.update(client, existing.rows[0].gif_id, gif)
-        : await this.insert(client, gif);
+      let outcome: StoreOutcome;
+      let gifId: string;
+      if (existing.rows[0]) {
+        gifId = existing.rows[0].gif_id;
+        outcome = await this.update(client, gifId, gif);
+      } else {
+        gifId = await this.insert(client, gif);
+        outcome = 'inserted';
+      }
+
+      // Relational tagging: mirror the provider's tags onto `tags`/`gif_tags` (not just the
+      // `metadata` JSON blob) so gifs are queryable/filterable by tag -- see
+      // docs/database-schema.md. Re-syncs on every import so a gif whose tags changed
+      // upstream (or that dropped a tag entirely) doesn't keep stale associations.
+      await this.syncTags(client, gifId, gif.tags);
+
       await client.query('COMMIT');
       return outcome;
     } catch (error) {
@@ -37,7 +50,7 @@ export class TenorGifRepository {
     }
   }
 
-  private async insert(client: TransactionClient, gif: TenorGif): Promise<StoreOutcome> {
+  private async insert(client: TransactionClient, gif: TenorGif): Promise<string> {
     const inserted = await query<{ id: string }>(
       client,
       `INSERT INTO gifs
@@ -47,13 +60,14 @@ export class TenorGifRepository {
        RETURNING id`,
       gifParams(gif)
     );
+    const gifId = inserted.rows[0].id;
     await client.query(
       `INSERT INTO third_party_references
          (gif_id, provider, external_id, external_url, attribution, raw_metadata)
        VALUES ($1, 'tenor', $2, $3, 'Powered By Tenor', $4::jsonb)`,
-      [inserted.rows[0].id, gif.id, gif.itemUrl, JSON.stringify(gif.raw)]
+      [gifId, gif.id, gif.itemUrl, JSON.stringify(gif.raw)]
     );
-    return 'inserted';
+    return gifId;
   }
 
   private async update(client: TransactionClient, gifId: string, gif: TenorGif): Promise<StoreOutcome> {
@@ -74,6 +88,70 @@ export class TenorGifRepository {
     );
     return 'updated';
   }
+
+  /**
+   * Upserts each provider tag into the shared `tags` table (by slug, case-insensitively) and
+   * makes `gif_tags` match the given list exactly: adds missing associations, removes ones for
+   * tags the provider no longer reports for this gif. Blank/unslug-able tags (e.g. pure
+   * punctuation or emoji) are skipped rather than failing the whole import.
+   */
+  private async syncTags(client: TransactionClient, gifId: string, tagNames: readonly string[]): Promise<void> {
+    const tagIds: string[] = [];
+    const seenSlugs = new Set<string>();
+
+    for (const raw of tagNames) {
+      const name = raw.trim().slice(0, 100);
+      const slug = slugifyTag(name);
+      if (!name || !slug || seenSlugs.has(slug)) continue;
+      seenSlugs.add(slug);
+
+      // ON CONFLICT ... DO UPDATE (no-op) is a portable way to get RETURNING id back for both
+      // the newly-inserted row and a pre-existing one, in a single round-trip.
+      const upserted = await query<{ id: string }>(
+        client,
+        `INSERT INTO tags (name, slug)
+         VALUES ($1, $2)
+         ON CONFLICT (slug) DO UPDATE SET slug = tags.slug
+         RETURNING id`,
+        [name.slice(0, 50), slug]
+      );
+      tagIds.push(upserted.rows[0].id);
+    }
+
+    // Drop associations for tags no longer present (works even when tagIds is empty: `<> ALL`
+    // over an empty array is true for every row, so this clears all associations).
+    await client.query(
+      `DELETE FROM gif_tags WHERE gif_id = $1 AND tag_id <> ALL($2::uuid[])`,
+      [gifId, tagIds]
+    );
+
+    if (tagIds.length > 0) {
+      await client.query(
+        `INSERT INTO gif_tags (gif_id, tag_id)
+         SELECT $1, unnest($2::uuid[])
+         ON CONFLICT (gif_id, tag_id) DO NOTHING`,
+        [gifId, tagIds]
+      );
+    }
+  }
+}
+
+/**
+ * Normalizes a free-text tag into the URL-safe slug format `tags.slug` requires
+ * (`^[a-z0-9]+(-[a-z0-9]+)*$`): lowercased, diacritics stripped, runs of anything else collapsed
+ * to a single hyphen, no leading/trailing hyphen. Returns '' for tags with no ASCII
+ * alphanumerics (e.g. an emoji-only tag) -- callers should skip those rather than insert a
+ * blank/all-hyphen slug.
+ */
+export function slugifyTag(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '');
 }
 
 function gifParams(gif: TenorGif): unknown[] {
