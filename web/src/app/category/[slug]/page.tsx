@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ApiError, getCategoryGifs } from '@/lib/api';
 import { Container } from '@/components/layout/Container';
-import { GifGrid } from '@/components/gif/GifGrid';
+import { GifCategoryBrowser } from '@/components/gif/GifCategoryBrowser';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -75,13 +75,22 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
       <div className="mt-8">
         {gifs.items.length > 0 ? (
           <>
-            <GifGrid gifs={gifs.items} />
-            <Pagination
-              basePath={`/category/${category.slug}`}
-              limit={gifs.limit}
-              offset={gifs.offset}
-              total={gifs.total}
-            />
+            {/*
+              With JavaScript, `GifCategoryBrowser` takes over: it renders this same first page and
+              lazily fetches the rest as the user scrolls (or activates its "Load more" button).
+              `key={category.slug}` forces a fresh instance - and fresh internal state - whenever the
+              category changes. Without JavaScript the browser never mounts, so the real `Pagination`
+              links below (normally invisible) are what's left to page through every gif.
+            */}
+            <GifCategoryBrowser key={category.slug} categorySlug={category.slug} initialGifs={gifs} />
+            <noscript>
+              <Pagination
+                basePath={`/category/${category.slug}`}
+                limit={gifs.limit}
+                offset={gifs.offset}
+                total={gifs.total}
+              />
+            </noscript>
           </>
         ) : (
           <EmptyState
