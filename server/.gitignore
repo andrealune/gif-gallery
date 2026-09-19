@@ -3,4 +3,8 @@ dist/
 .env
 *.log
 coverage/
-storage/
+# Only the runtime local-storage upload directory at the server root
+# (STORAGE_LOCAL_DIR, see src/services/storage) - anchored so it doesn't
+# also match source directories named "storage" (src/services/storage,
+# test/storage).
+/storage/

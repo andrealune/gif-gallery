@@ -27,6 +27,15 @@ export function createApp(): Express {
   app.use(robotsRouter);
   app.use(sitemapRouter);
 
+  // Serves whatever the local storage adapter (src/services/storage,
+  // consumed by the batch generation scheduler, L42-424) has written to
+  // STORAGE_LOCAL_DIR - e.g. an AI-generated GIF's `url`. This only applies
+  // to the 'local' storage provider; an S3 (or other) provider from
+  // L42-425 would serve its own URLs directly and not need this route.
+  if (env.storage.provider === 'local') {
+    app.use('/storage', express.static(env.storage.localDir, { index: false, dotfiles: 'ignore' }));
+  }
+
   app.use('/api', apiRouter);
 
   app.use(notFoundHandler);

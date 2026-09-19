@@ -114,7 +114,9 @@ export const env = {
   },
 
   storage: {
-    // Consumed by the file storage setup in a later task (L42-425).
+    // Minimal local-disk provider is implemented by src/services/storage
+    // (L42-424) so the batch scheduler can persist a gif end-to-end today.
+    // A full multi-provider abstraction (S3, CDN URLs, etc.) is L42-425's job.
     provider: optional('STORAGE_PROVIDER', 'local'),
     localDir: optional('STORAGE_LOCAL_DIR', './storage'),
     s3Bucket: optional('S3_BUCKET'),
@@ -131,6 +133,30 @@ export const env = {
     siteUrl: optional('SITE_URL', 'http://localhost:3000').replace(/\/+$/, ''),
   },
 
+  generation: {
+    // Batch generation scheduler (L42-424): periodically generates new GIFs
+    // from docs/specs/ai-generation-prompts-spec.md's category->prompt
+    // mapping (`generation_prompts`), via src/services/ai + src/services/gif,
+    // and records the outcome in `generation_attempts`.
+    // Off by default so importing this module never has a side effect in
+    // tests/dev; set explicitly (or call startGenerationScheduler() directly)
+    // to run it.
+    enabled: toBool(process.env.GENERATION_SCHEDULER_ENABLED, false),
+    // Standard 5-field cron expression. Default: once a day at 03:00.
+    // Use e.g. '0 3 * * 1' for "every Monday at 03:00" (weekly).
+    cronSchedule: optional('GENERATION_CRON_SCHEDULE', '0 3 * * *'),
+    timezone: optional('GENERATION_TIMEZONE', 'UTC'),
+    // Caps how many categories a single batch run generates for (each
+    // category gets at most one attempt per run). 0 = no cap, i.e. every
+    // category that currently has at least one active prompt. Feeds gap G6
+    // (cost/quota) from the prompts spec - keep this and OPENAI_COST_BUDGET_USD
+    // in mind together when sizing a run.
+    maxCategoriesPerRun: toInt(process.env.GENERATION_MAX_CATEGORIES_PER_RUN, 0),
+    // Also runs one batch immediately on process startup, in addition to the
+    // cron schedule. Useful for manually triggering a run or smoke-testing in
+    // a deploy; leave off in normal operation so restarts don't cause an
+    // unplanned extra run.
+    runOnStart: toBool(process.env.GENERATION_RUN_ON_START, false),
   elasticsearch: {
     // GIF search cluster - see src/search and docs/elasticsearch.md (L42-418).
     // Local dev: docker-compose.yml starts a single-node cluster at this

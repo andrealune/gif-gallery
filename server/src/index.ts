@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { checkDatabaseConnection, closePool } from './db/pool';
+import { startGenerationScheduler, stopGenerationScheduler } from './services/generation';
 
 async function main(): Promise<void> {
   const app = createApp();
@@ -14,6 +15,10 @@ async function main(): Promise<void> {
     );
   }
 
+  // Batch generation scheduler (L42-424) - no-op unless
+  // GENERATION_SCHEDULER_ENABLED is set; see src/config/env.ts.
+  startGenerationScheduler();
+
   const server = app.listen(env.port, () => {
     // eslint-disable-next-line no-console
     console.log(`gif-gallery server listening on port ${env.port} (${env.nodeEnv})`);
@@ -22,6 +27,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     // eslint-disable-next-line no-console
     console.log(`Received ${signal}, shutting down gracefully...`);
+    stopGenerationScheduler();
     server.close(async () => {
       await closePool();
       process.exit(0);
