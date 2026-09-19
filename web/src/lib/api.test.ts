@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ApiError, getCategories, getCategory, getCategoryGifs, getGif, searchGifs } from './api';
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
@@ -109,10 +109,34 @@ describe('api client', () => {
 
     const result = await searchGifs('clap', { limit: 24, offset: 0 });
 
-    expect(result).toEqual({ items: [gif], limit: 24, offset: 0, total: 1 });
+    expect(result).toEqual({ items: [gif], limit: 24, offset: 0, total: 1, degraded: false });
     const [url] = vi.mocked(fetch).mock.calls[0] as [string];
     expect(url).toContain('/search?');
     expect(url).toContain('q=clap');
+  });
+
+  it('searchGifs surfaces degraded: true from the response body (Postgres fallback, L42-461)', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ data: [gif], pagination: { limit: 24, offset: 0, total: 1 }, degraded: true })
+    );
+
+    const result = await searchGifs('clap');
+
+    expect(result.degraded).toBe(true);
+  });
+
+  it('searchGifs surfaces degraded: true from the X-Search-Degraded header even without the body field', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        { data: [gif], pagination: { limit: 24, offset: 0, total: 1 } },
+        200,
+        { 'X-Search-Degraded': 'true' }
+      )
+    );
+
+    const result = await searchGifs('clap');
+
+    expect(result.degraded).toBe(true);
   });
 
   it('searchGifs surfaces a typed ApiError when the endpoint is unavailable', async () => {

@@ -13,8 +13,8 @@ vi.mock('@/lib/api', async () => {
 });
 
 import { SearchForm } from './SearchForm';
-import { ApiError, getCategories, searchGifs } from '@/lib/api';
-import type { CategorySummary, GifSummary, Page } from '@/lib/types';
+import { ApiError, getCategories, searchGifs, type SearchResults } from '@/lib/api';
+import type { CategorySummary, GifSummary } from '@/lib/types';
 
 function makeGif(id: string, overrides: Partial<GifSummary> = {}): GifSummary {
   return {
@@ -37,11 +37,11 @@ function makeGif(id: string, overrides: Partial<GifSummary> = {}): GifSummary {
   };
 }
 
-function gifPage(items: GifSummary[]): Page<GifSummary> {
-  return { items, limit: 6, offset: 0, total: items.length };
+function gifPage(items: GifSummary[], degraded = false): SearchResults<GifSummary> {
+  return { items, limit: 6, offset: 0, total: items.length, degraded };
 }
 
-function categoriesPage(items: CategorySummary[]): Page<CategorySummary> {
+function categoriesPage(items: CategorySummary[]) {
   return { items, limit: 100, offset: 0, total: items.length };
 }
 
@@ -217,5 +217,42 @@ describe('SearchForm', () => {
 
     expect(await screen.findByText('No matching GIFs')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows a basic-search notice above the suggestions when the response is degraded (L42-461/L42-464)', async () => {
+    vi.mocked(searchGifs).mockResolvedValue(gifPage([makeGif('1', { title: 'Dancing cat' })], true));
+    const user = userEvent.setup();
+    render(<SearchForm />);
+
+    await user.type(screen.getByRole('combobox'), 'da');
+
+    expect(await screen.findByRole('option')).toBeInTheDocument();
+    expect(
+      screen.getByText('Basic search results — full relevance ranking is temporarily unavailable.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows the basic-search notice alongside "No matching GIFs" too', async () => {
+    vi.mocked(searchGifs).mockResolvedValue(gifPage([], true));
+    const user = userEvent.setup();
+    render(<SearchForm />);
+
+    await user.type(screen.getByRole('combobox'), 'zzz');
+
+    expect(await screen.findByText('No matching GIFs')).toBeInTheDocument();
+    expect(
+      screen.getByText('Basic search results — full relevance ranking is temporarily unavailable.')
+    ).toBeInTheDocument();
+  });
+
+  it('does not show the basic-search notice for a normal (non-degraded) response', async () => {
+    vi.mocked(searchGifs).mockResolvedValue(gifPage([makeGif('1')], false));
+    const user = userEvent.setup();
+    render(<SearchForm />);
+
+    await user.type(screen.getByRole('combobox'), 'gif');
+
+    expect(await screen.findByRole('option')).toBeInTheDocument();
+    expect(screen.queryByText(/basic search/i)).not.toBeInTheDocument();
   });
 });

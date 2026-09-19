@@ -22,6 +22,11 @@ const DEBOUNCE_MS = 200;
  * nothing highlighted falls through to the normal "search for exactly what I typed" submit. If
  * `/api/search` is unavailable (offline, not deployed, ...) suggestions just silently stay empty -
  * typing and submitting the form is never blocked by it.
+ *
+ * When `/api/search` answers in "basic search" mode (L42-461: no reachable Elasticsearch, e.g.
+ * every preview per ADR 0001) it flags the response as `degraded` - see `lib/api.ts#searchGifs`.
+ * The dropdown then shows a small notice above the suggestions so a reviewer doesn't mistake
+ * basic keyword matches for an actual relevance regression (L42-464).
  */
 export function SearchForm({
   defaultValue = '',
@@ -39,6 +44,7 @@ export function SearchForm({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [degraded, setDegraded] = useState(false);
 
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
@@ -87,12 +93,14 @@ export function SearchForm({
           if (requestId !== requestIdRef.current) return; // superseded by a later keystroke
           setCategories(categoryMap);
           setSuggestions(resultPage?.items ?? []);
+          setDegraded(resultPage?.degraded ?? false);
           setActiveIndex(-1);
           setOpen(true);
         })
         .catch(() => {
           if (requestId !== requestIdRef.current) return;
           setSuggestions([]);
+          setDegraded(false);
         })
         .finally(() => {
           if (requestId === requestIdRef.current) setLoading(false);
@@ -131,6 +139,7 @@ export function SearchForm({
       requestIdRef.current += 1; // invalidate any in-flight fetch, its response is now stale
       setLoading(false);
       setSuggestions([]);
+      setDegraded(false);
       setOpen(false);
       setActiveIndex(-1);
       return;
@@ -198,6 +207,8 @@ export function SearchForm({
   // more compact of the two.
   const inputSize = size === 'lg' ? 'py-3 text-base' : 'py-2 text-base';
   const showListbox = open && suggestions.length > 0;
+  const showNoMatches = open && !loading && suggestions.length === 0;
+  const showDropdown = showListbox || showNoMatches;
   const activeOptionId = activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined;
 
   return (
@@ -238,61 +249,69 @@ export function SearchForm({
               : ''}
         </span>
 
-        {open && !loading && suggestions.length === 0 ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-lg"
-          >
-            No matching GIFs
+        {showDropdown ? (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+            {degraded ? (
+              <p
+                role="status"
+                aria-live="polite"
+                className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800"
+              >
+                Basic search results — full relevance ranking is temporarily unavailable.
+              </p>
+            ) : null}
+
+            {suggestions.length === 0 ? (
+              <div role="status" aria-live="polite" className="px-3 py-2 text-sm text-slate-500">
+                No matching GIFs
+              </div>
+            ) : (
+              <ul
+                id={listboxId}
+                role="listbox"
+                aria-label="Search suggestions"
+                className="max-h-80 overflow-auto py-1"
+              >
+                {suggestions.map((gif, index) => {
+                  const category = gif.categoryId ? categories.get(gif.categoryId) : undefined;
+                  const isActive = index === activeIndex;
+
+                  return (
+                    <li
+                      key={gif.id}
+                      id={`${listboxId}-option-${index}`}
+                      role="option"
+                      aria-selected={isActive}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectSuggestion(gif)}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${
+                        isActive ? 'bg-brand-50' : ''
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- remote hosts aren't finalized, see next.config.mjs */}
+                      <img
+                        src={gif.thumbnailUrl ?? gif.url}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-10 w-10 flex-shrink-0 rounded object-cover bg-slate-100"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-slate-900">
+                          {gif.title || 'Untitled GIF'}
+                        </span>
+                        <span className="block truncate text-xs uppercase tracking-wide text-slate-400">
+                          {gif.source}
+                          {category ? ` · ${category.name}` : ''}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
-        ) : null}
-
-        {showListbox ? (
-          <ul
-            id={listboxId}
-            role="listbox"
-            aria-label="Search suggestions"
-            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-          >
-            {suggestions.map((gif, index) => {
-              const category = gif.categoryId ? categories.get(gif.categoryId) : undefined;
-              const isActive = index === activeIndex;
-
-              return (
-                <li
-                  key={gif.id}
-                  id={`${listboxId}-option-${index}`}
-                  role="option"
-                  aria-selected={isActive}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => selectSuggestion(gif)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${
-                    isActive ? 'bg-brand-50' : ''
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- remote hosts aren't finalized, see next.config.mjs */}
-                  <img
-                    src={gif.thumbnailUrl ?? gif.url}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="h-10 w-10 flex-shrink-0 rounded object-cover bg-slate-100"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-slate-900">
-                      {gif.title || 'Untitled GIF'}
-                    </span>
-                    <span className="block truncate text-xs uppercase tracking-wide text-slate-400">
-                      {gif.source}
-                      {category ? ` · ${category.name}` : ''}
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
         ) : null}
       </div>
 

@@ -82,6 +82,27 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       </div>
 
       <div className="mt-8">
+        {/*
+         * L42-461/L42-464: `results.degraded` is `true` when `/api/search` used its Postgres
+         * full-text fallback instead of Elasticsearch - always the case in preview per ADR 0001
+         * (docs/adr/0001-preview-environment-topology.md), and also whenever the cluster is
+         * otherwise unreachable. Shown regardless of result count (even for zero results) so a
+         * reviewer never mistakes "basic search" ranking for an actual relevance regression.
+         */}
+        {results?.degraded ? (
+          <p
+            role="status"
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+          >
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 uppercase tracking-wide">
+              Basic search
+            </span>
+            <span className="font-normal text-amber-700">
+              Full relevance ranking is temporarily unavailable - showing keyword matches instead.
+            </span>
+          </p>
+        ) : null}
+
         {!query ? (
           <EmptyState
             title="Search for something"
