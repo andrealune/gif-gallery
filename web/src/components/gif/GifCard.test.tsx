@@ -52,4 +52,14 @@ describe('GifCard', () => {
     render(<GifCard gif={{ ...baseGif, durationMs: null }} />);
     expect(screen.queryByText(/\ds$/)).not.toBeInTheDocument();
   });
+
+  it('links the whole card to the gif detail page by id when no slug is available', () => {
+    render(<GifCard gif={baseGif} />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/gif/g1');
+  });
+
+  it('links by slug instead of id when a slug is available', () => {
+    render(<GifCard gif={{ ...baseGif, slug: 'excited-clapping' }} />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/gif/excited-clapping');
+  });
 });

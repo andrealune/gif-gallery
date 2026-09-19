@@ -127,25 +127,30 @@ export async function searchGifs(q: string, params: PaginationParams = {}): Prom
 }
 
 /**
- * A single GIF with the extra field(s) only the detail page needs. `slug` is optional because the
- * `gifs` table has no `slug` column yet (see `server/migrations/0005_create_gifs_table.up.sql`)
- * even though `server/src/services/sitemap.ts` already emits `/gif/:slug` URLs assuming one - a
- * mismatch flagged to the backend/database engineers alongside this change (see L42-431's report).
- * Kept out of `GifSummary` itself so every existing list/grid caller (which never gets a `slug`
- * from `/categories/:id/gifs` or `/search`) is unaffected.
+ * A single GIF with the extra field(s) only the detail page needs.
+ *
+ * `slug` mirrors `server/src/services/gifs/types.ts#GifDetail` (backend, L42-448) - the gif's
+ * slugified title, used to build the pretty `/gif/:slug` URL. Optional here only because it isn't
+ * (and never has been) part of `GifSummary`/the list endpoints, so every existing list/grid caller
+ * (which never gets a `slug` from `/categories/:id/gifs` or `/search`) is unaffected.
+ *
+ * `tags` is speculative: `server/migrations/0006_create_gif_tags_table.up.sql` created a
+ * `gif_tags` table, but `GET /api/gifs/:idOrSlug` doesn't join it yet, so this endpoint never
+ * actually sends a `tags` array today - see the propose_work filed from L42-429 for wiring it up
+ * backend-side. Kept optional (rather than omitted) so the detail page's tags section is ready to
+ * render real data the moment the backend adds it, with zero frontend changes needed.
  */
 export interface GifDetail extends GifSummary {
   slug?: string;
+  tags?: string[];
 }
 
 /**
- * `GET /api/gifs/:idOrSlug` - not implemented by the backend yet (no `gifs` router is mounted in
- * `server/src/routes/index.ts` today). Written against the same `{ data }` shape and `idOrSlug`
- * lookup convention `getCategory` already uses, and returns `null` (rather than throwing) on a 404
- * so the `/gif/[slug]` page (L42-431) can call `notFound()`. This throws for any other failure
- * (offline, 5xx, ...); the page treats that as a hard error like every other page here does. No
- * frontend changes should be needed once the backend route ships - see the propose_work filed from
- * L42-431 for that follow-up.
+ * `GET /api/gifs/:idOrSlug` (backend: `server/src/routes/gifs.ts`, L42-448) - single gif lookup by
+ * UUID or slug, mirroring the `idOrSlug` lookup convention `getCategory` already uses. Returns
+ * `null` (rather than throwing) on a 404 so the `/gif/[slug]` page (L42-429/L42-431) can call
+ * `notFound()`. This throws for any other failure (offline, 5xx, ...); the page treats that as a
+ * hard error like every other page here does.
  */
 export async function getGif(idOrSlug: string): Promise<GifDetail | null> {
   try {
