@@ -28,7 +28,12 @@ export function SearchForm({
     router.push(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search');
   };
 
-  const inputSize = size === 'lg' ? 'py-3 text-base' : 'py-2 text-sm';
+  // `text-base` (16px) on both sizes, not just `lg` - anything smaller and iOS Safari auto-zooms
+  // the whole page when this input receives focus (its zoom heuristic kicks in below 16px), which
+  // is especially jarring for the `md` instance since that one sits in the header and is reachable
+  // from every page. `md` keeps a tighter vertical size (`py-2` vs `py-3`) so it still reads as the
+  // more compact of the two.
+  const inputSize = size === 'lg' ? 'py-3 text-base' : 'py-2 text-base';
 
   return (
     <form
