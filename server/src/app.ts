@@ -2,9 +2,11 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes';
+import { indexNowRouter } from './routes/indexnow';
 import { robotsRouter } from './routes/robots';
 import { sitemapRouter } from './routes/sitemap';
 
@@ -26,14 +28,21 @@ export function createApp(): Express {
   // expect /robots.txt and /sitemap.xml at the site origin (L42-433).
   app.use(robotsRouter);
   app.use(sitemapRouter);
+  // IndexNow key-file verification (L42-435); no-ops until INDEXNOW_KEY is set.
+  app.use(indexNowRouter);
 
-  // Serves whatever the local storage adapter (src/services/storage,
-  // consumed by the batch generation scheduler, L42-424) has written to
-  // STORAGE_LOCAL_DIR - e.g. an AI-generated GIF's `url`. This only applies
-  // to the 'local' storage provider; an S3 (or other) provider from
-  // L42-425 would serve its own URLs directly and not need this route.
+  // Local development only: serves whatever the local storage driver
+  // (src/storage, src/services/storage - consumed by the batch generation
+  // scheduler, L42-424) has written to STORAGE_LOCAL_DIR, e.g. an
+  // AI-generated GIF's `url`. This only applies to the 'local' storage
+  // provider; production uses the S3 + CloudFront setup instead
+  // (STORAGE_PROVIDER=s3, see infra/terraform/storage), which serves
+  // objects directly from the CDN, not through this app.
   if (env.storage.provider === 'local') {
-    app.use('/storage', express.static(env.storage.localDir, { index: false, dotfiles: 'ignore' }));
+    app.use(
+      '/storage',
+      express.static(path.resolve(process.cwd(), env.storage.localDir), { index: false, dotfiles: 'ignore' })
+    );
   }
 
   app.use('/api', apiRouter);

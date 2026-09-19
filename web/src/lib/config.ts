@@ -34,3 +34,18 @@ export const SITE_DESCRIPTION =
 export const SITE_KEYWORDS = ['gif', 'gifs', 'animated gif', 'gif gallery', 'gif search', SITE_NAME.toLowerCase()];
 
 export const DEFAULT_PAGE_SIZE = 24;
+
+/**
+ * Search-console ownership-verification codes (L42-435 - "submit to search engines"). Google
+ * Search Console and Bing Webmaster Tools both offer an HTML-meta-tag verification method as an
+ * alternative to a DNS TXT record; dropping the code they issue in here (via env var, once
+ * someone actually registers the property) renders it into <head> - no code change needed at
+ * that point. Both are empty/unset by default, which simply omits the tag (see
+ * `metadata.verification` in `app/layout.tsx`) rather than shipping a bogus one.
+ *
+ * - Google: Search Console > Settings > Ownership verification > HTML tag > the `content` value.
+ * - Bing: Bing Webmaster Tools > Settings > site verification. Bing also accepts a Google
+ *   Search Console import, which avoids needing a separate code at all.
+ */
+export const GOOGLE_SITE_VERIFICATION = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION ?? '';
+export const BING_SITE_VERIFICATION = process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION ?? '';

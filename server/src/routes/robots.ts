@@ -9,6 +9,14 @@ export const robotsRouter = Router();
  * - Disallows the JSON API (not a page for users/crawlers to index).
  * - Points crawlers at the dynamic sitemap (L42-433) with an absolute URL,
  *   as required by the sitemaps.org / robots.txt convention.
+ *
+ * `User-agent: *` / `Allow: /` deliberately covers search engines (Googlebot,
+ * Bingbot, ...) *and* LLM/AI crawlers (GPTBot, Google-Extended, CCBot,
+ * anthropic-ai, PerplexityBot, ...) - there's no separate rule blocking any
+ * of them, so nothing here needs to change for L42-435 ("submit to ... LLM
+ * indexing services"). Add an explicit `Disallow` block for a named
+ * user-agent here (with a comment saying why) if that policy ever needs to
+ * change for one of them specifically.
  */
 robotsRouter.get('/robots.txt', (_req, res) => {
   const lines = [

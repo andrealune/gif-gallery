@@ -35,6 +35,12 @@ const nextConfig = {
       // Chunked sitemaps (only reached past MAX_URLS_PER_SITEMAP total URLs - see
       // server/src/services/sitemap.ts), e.g. /sitemap-0.xml.
       { source: '/sitemap-:index.xml', destination: `${origin}/sitemap-:index.xml` },
+      // IndexNow key-file verification (L42-435, server/src/routes/indexnow.ts) - only ever
+      // serves a body when the requested name matches INDEXNOW_KEY server-side, so this is a
+      // no-op (falls through to a normal 404) for every other *.txt path, including this rule
+      // matching before robots.txt would - the two rules above are checked first regardless
+      // since Next.js rewrites try array entries in order.
+      { source: '/:key.txt', destination: `${origin}/:key.txt` },
     ];
   },
 };

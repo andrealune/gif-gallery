@@ -79,7 +79,7 @@ describe('GifCategoryBrowser', () => {
     const user = userEvent.setup();
     const initial = page([makeGif('1'), makeGif('2')], 2, 0, 4);
     vi.mocked(getCategoryGifs).mockResolvedValueOnce({
-      category: { id: 'c1', name: 'Reactions', slug: 'reactions', description: null, gifCount: 4, createdAt: '', updatedAt: '' },
+      category: { id: 'c1', name: 'Reactions', slug: 'reactions', description: null, gifCount: 4, thumbnailUrl: null, createdAt: '', updatedAt: '' },
       gifs: page([makeGif('3'), makeGif('4')], 2, 2, 4),
     });
 
@@ -96,7 +96,7 @@ describe('GifCategoryBrowser', () => {
   it('loads the next page automatically once the sentinel intersects the viewport', async () => {
     const initial = page([makeGif('1')], 1, 0, 2);
     vi.mocked(getCategoryGifs).mockResolvedValueOnce({
-      category: { id: 'c1', name: 'Reactions', slug: 'reactions', description: null, gifCount: 2, createdAt: '', updatedAt: '' },
+      category: { id: 'c1', name: 'Reactions', slug: 'reactions', description: null, gifCount: 2, thumbnailUrl: null, createdAt: '', updatedAt: '' },
       gifs: page([makeGif('2')], 1, 1, 2),
     });
 
