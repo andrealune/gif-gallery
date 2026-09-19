@@ -144,6 +144,16 @@ export const env = {
     // directive in robots.txt (L42-433). Must match the public frontend
     // origin in production, e.g. https://www.example.com.
     siteUrl: optional('SITE_URL', 'http://localhost:3000').replace(/\/+$/, ''),
+
+    // IndexNow (https://www.indexnow.org/) lets us push new/changed URLs
+    // straight to Bing/Yandex/Seznam instead of waiting for them to
+    // recrawl (L42-435 - "submit to search engines"). Get a key from
+    // https://www.bing.com/indexnow (or generate any hex string and use the
+    // same one everywhere) and set it here. Unset by default: the key file
+    // route (src/routes/indexnow.ts) and `npm run seo:submit-indexnow`
+    // (src/seo/submitIndexNow.ts) both no-op without it, so this is safe to
+    // leave off until someone actually registers a key.
+    indexNowKey: optional('INDEXNOW_KEY'),
   },
 
   generation: {

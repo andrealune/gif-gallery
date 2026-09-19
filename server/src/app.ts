@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes';
+import { indexNowRouter } from './routes/indexnow';
 import { robotsRouter } from './routes/robots';
 import { sitemapRouter } from './routes/sitemap';
 
@@ -26,6 +27,8 @@ export function createApp(): Express {
   // expect /robots.txt and /sitemap.xml at the site origin (L42-433).
   app.use(robotsRouter);
   app.use(sitemapRouter);
+  // IndexNow key-file verification (L42-435); no-ops until INDEXNOW_KEY is set.
+  app.use(indexNowRouter);
 
   // Serves whatever the local storage adapter (src/services/storage,
   // consumed by the batch generation scheduler, L42-424) has written to
