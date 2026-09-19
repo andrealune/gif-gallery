@@ -7,8 +7,10 @@ import { GifCategoryBrowser } from '@/components/gif/GifCategoryBrowser';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { JsonLd } from '@/components/seo/JsonLd';
 import { DEFAULT_PAGE_SIZE } from '@/lib/config';
-import { truncate } from '@/lib/seo';
+import { categoryOgDescription } from '@/lib/seo';
+import { breadcrumbJsonLd, categoryJsonLd } from '@/lib/structuredData';
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
@@ -30,7 +32,7 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
     if (!result) return { title: 'Category not found' };
 
     const { category, gifs } = result;
-    const description = truncate(category.description ?? `Browse ${category.name} GIFs.`);
+    const description = categoryOgDescription(category);
     const preview = gifs.items[0];
     const previewImage = preview ? preview.thumbnailUrl ?? preview.url : null;
     const url = `/category/${category.slug}`;
@@ -80,9 +82,25 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   if (!result) notFound();
 
   const { category, gifs } = result;
+  const url = `/category/${category.slug}`;
 
   return (
     <Container className="py-10">
+      {/*
+        `categoryJsonLd` only describes the GIFs actually rendered below (this page's first
+        `DEFAULT_PAGE_SIZE` results, not every GIF in the category) so the structured data never
+        overstates what's on the page - see the comment on `categoryJsonLd` itself.
+      */}
+      <JsonLd
+        data={[
+          categoryJsonLd(category, gifs.items, url),
+          breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: category.name, path: url },
+          ]),
+        ]}
+      />
+
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-slate-500">
         <Link href="/" className="hover:text-brand-700">
           Home
