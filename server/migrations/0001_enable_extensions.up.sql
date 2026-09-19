@@ -1,0 +1,20 @@
+-- Migration: 0001_enable_extensions
+-- Purpose: originally intended to enable pgcrypto for gen_random_uuid().
+--
+-- Superseded before this schema was ever applied anywhere: gen_random_uuid()
+-- has been a PostgreSQL *core* builtin since version 13 (verified against
+-- both a modern Postgres and the embedded PGlite test engine used by
+-- ../test/migrations.test.ts, which has no contrib extensions available at
+-- all) -- no CREATE EXTENSION is required for it, or for anything else in
+-- this schema. This project targets PostgreSQL 13+ (see 0002 onward, which
+-- all use gen_random_uuid() directly).
+--
+-- This file is kept as an intentional no-op, rather than removed and every
+-- later migration renumbered, so migration numbers stay stable once
+-- published. It does nothing and is safe to apply/roll back any number of
+-- times.
+--
+-- Locking behaviour: none.
+-- Rollback: none.
+-- Data impact: none.
+SELECT 1;

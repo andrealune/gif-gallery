@@ -1,0 +1,12 @@
+-- OBSOLETE DRAFT STUB -- superseded, intentionally inert.
+--
+-- This file was an early-draft, differently-numbered version of a
+-- migration that was renumbered during review (see docs/database-schema.md
+-- and the 0001-0008 migration set, which is the final, tested schema). The
+-- task tooling used to author this change has no mechanism to delete a
+-- previously saved file, so this stub is kept as a harmless no-op rather
+-- than left with a stale CREATE TABLE/TYPE statement that would collide
+-- with the real, differently-numbered migration of the same content.
+--
+-- Locking behaviour: none. Rollback: none. Data impact: none.
+SELECT 1;

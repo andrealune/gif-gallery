@@ -14,14 +14,16 @@ Backend API for the AI-powered GIF gallery website (Node.js + TypeScript + Expre
 
 ```
 server/
+  migrations/    SQL schema migrations (NNNN_name.up.sql / .down.sql pairs)
   src/
     config/      environment variable loading & validation (env.ts)
-    db/          database connection pool (pool.ts)
+    db/          database connection pool (pool.ts) and migration runner (migrate.ts)
     middleware/  Express middleware (error handling, etc.)
     routes/      route definitions, mounted under /api
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
+  docs/          architecture/data documentation (database-schema.md)
   .env.example   documented list of required/optional env vars
 ```
 
@@ -40,6 +42,9 @@ Other scripts:
 - `npm start` – run the compiled server (`dist/index.js`)
 - `npm test` – run the test suite
 - `npm run lint` – lint the codebase
+- `npm run migrate:status` – list applied/pending schema migrations
+- `npm run migrate:up` – apply all pending schema migrations
+- `npm run migrate:down [-- --step N]` – roll back the most recent migration (or the last N)
 
 ## Environment variables
 
@@ -59,5 +64,23 @@ See `.env.example` for the full list. Highlights:
 
 ## Database
 
-The database schema itself is defined by a separate task (L42-414, database engineer). This task only
-establishes the pooled connection (`src/db/pool.ts`) that later migrations/queries build on.
+The schema is defined by versioned SQL migrations in `migrations/` and applied with the runner in
+`src/db/migrate.ts` (see `npm run migrate:*` above). Full design rationale, the entity-relationship
+overview, indexing strategy and data-retention plan live in `docs/database-schema.md` -- read that
+before writing queries against `gifs`, `categories`, `tags`, `gif_tags` or `third_party_references`.
+
+Quick start against a local Postgres 13+ instance:
+
+```bash
+createdb gif_gallery   # or: docker run -e POSTGRES_DB=gif_gallery ... postgres:16
+npm run migrate:up
+npm run migrate:status
+```
+
+`src/db/pool.ts` provides the pooled runtime connection that routes/services use; it is unrelated to
+the migration runner above, which opens its own single connection so DDL runs outside the app's pool.
+
+Every migration file's header states its locking behaviour, rollback path and data impact -- read
+`.down.sql` before running `migrate:down` against any database that already has real data in it, since
+several down-migrations are destructive by design (they drop the tables/rows the matching up-migration
+created).
