@@ -20,6 +20,8 @@ server/
     db/          database connection pool (pool.ts) and migration runner (migrate.ts)
     middleware/  Express middleware (error handling, etc.)
     routes/      route definitions, mounted under /api
+    services/
+      ai/        OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
@@ -54,7 +56,11 @@ See `.env.example` for the full list. Highlights:
 - `CORS_ORIGIN` – allowed origin(s) for the frontend, comma-separated (or `*`)
 - `DATABASE_URL` – full Postgres connection string, or set `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` individually
 - `DB_POOL_MAX`, `DB_IDLE_TIMEOUT_MS`, `DB_CONNECTION_TIMEOUT_MS` – connection pool tuning
-- `OPENAI_API_KEY` – used by the AI image/GIF generation client (see L42-421); required in production
+- `OPENAI_API_KEY` – used by the AI image generation client (see below); required in production
+- `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`, `OPENAI_IMAGE_QUALITY` – defaults for generated images
+- `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_RETRIES`, `OPENAI_RETRY_BASE_DELAY_MS` – retry/timeout tuning
+- `OPENAI_RATE_LIMIT_RPM` – client-side cap on outgoing requests per minute
+- `OPENAI_COST_BUDGET_USD` – optional soft spend cap enforced before a request is sent
 - `STORAGE_PROVIDER`, `STORAGE_LOCAL_DIR`, `S3_*` – reserved for the file storage setup (see L42-425)
 
 ## Health checks
@@ -64,23 +70,39 @@ See `.env.example` for the full list. Highlights:
 
 ## Database
 
-The schema is defined by versioned SQL migrations in `migrations/` and applied with the runner in
-`src/db/migrate.ts` (see `npm run migrate:*` above). Full design rationale, the entity-relationship
-overview, indexing strategy and data-retention plan live in `docs/database-schema.md` -- read that
-before writing queries against `gifs`, `categories`, `tags`, `gif_tags` or `third_party_references`.
+The database schema itself is defined by a separate task (L42-414, database engineer). This task only
+establishes the pooled connection (`src/db/pool.ts`) that later migrations/queries build on.
 
-Quick start against a local Postgres 13+ instance:
+## AI image generation client (`src/services/ai`)
 
-```bash
-createdb gif_gallery   # or: docker run -e POSTGRES_DB=gif_gallery ... postgres:16
-npm run migrate:up
-npm run migrate:status
+`openaiImageClient` (exported from `src/services/ai`) wraps OpenAI's image generation
+("DALL-E") API for use by future routes/jobs (e.g. the `/api/generate` endpoint):
+
+```ts
+import { openaiImageClient } from './services/ai';
+
+const result = await openaiImageClient.generateImage({ prompt: 'a corgi skateboarding, cartoon style' });
+// result.images[0].url, result.costUsd, ...
 ```
 
-`src/db/pool.ts` provides the pooled runtime connection that routes/services use; it is unrelated to
-the migration runner above, which opens its own single connection so DDL runs outside the app's pool.
+It handles, out of the box:
 
-Every migration file's header states its locking behaviour, rollback path and data impact -- read
-`.down.sql` before running `migrate:down` against any database that already has real data in it, since
-several down-migrations are destructive by design (they drop the tables/rows the matching up-migration
-created).
+- **Authentication** – sends `OPENAI_API_KEY` as a `Bearer` token; throws `OpenAIConfigError` up front
+  if the key (or the prompt) is missing, without making a network call.
+- **Retries** – exponential backoff with jitter on HTTP 429 and 5xx responses (and on timeouts),
+  honoring the API's `Retry-After` header when present. Non-retryable errors (401/403 auth failures,
+  other 4xx like invalid prompts/content-policy violations) fail immediately as
+  `OpenAIAuthError`/`OpenAIRequestError`. Tunable via `OPENAI_MAX_RETRIES` / `OPENAI_RETRY_BASE_DELAY_MS`.
+- **Timeouts** – each attempt is aborted after `OPENAI_REQUEST_TIMEOUT_MS` via `AbortController`,
+  surfaced as `OpenAITimeoutError` (itself retried).
+- **Client-side rate limiting** – a sliding-window limiter (`OPENAI_RATE_LIMIT_RPM`) throttles our own
+  outgoing request rate, independent of whatever OpenAI enforces for the account/tier.
+- **Cost tracking** – every successful call is priced from a small per-model/size/quality table and
+  accumulated in-memory (`client.getUsageStats()`); an optional soft budget (`OPENAI_COST_BUDGET_USD`)
+  rejects a request with `CostBudgetExceededError` *before* it is sent if it would exceed the cap.
+
+See `src/services/ai/*.ts` and `test/ai/*.test.ts` for the full behavior and error types
+(`OpenAIConfigError`, `OpenAIAuthError`, `OpenAIRateLimitError`, `OpenAIRequestError`,
+`OpenAIServerError`, `OpenAITimeoutError`, `CostBudgetExceededError`). No HTTP route is wired up yet -
+this task only sets up the client itself; wiring a `/api/generate` endpoint on top of it is a
+separate, later task.

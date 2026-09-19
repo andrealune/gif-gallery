@@ -23,6 +23,12 @@ function toInt(value: string | undefined, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function toFloat(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = parseFloat(value);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
 function toBool(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
@@ -49,8 +55,19 @@ export const env = {
   },
 
   ai: {
-    // Consumed by the AI generation client set up in a later task (L42-421).
+    // OpenAI (DALL-E) image generation client - see src/services/ai.
     openaiApiKey: requiredInProduction('OPENAI_API_KEY'),
+    baseUrl: optional('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+    imageModel: optional('OPENAI_IMAGE_MODEL', 'dall-e-3'),
+    imageSize: optional('OPENAI_IMAGE_SIZE', '1024x1024'),
+    imageQuality: optional('OPENAI_IMAGE_QUALITY', 'standard'),
+    requestTimeoutMs: toInt(process.env.OPENAI_REQUEST_TIMEOUT_MS, 60000),
+    maxRetries: toInt(process.env.OPENAI_MAX_RETRIES, 3),
+    retryBaseDelayMs: toInt(process.env.OPENAI_RETRY_BASE_DELAY_MS, 500),
+    rateLimitRequestsPerMinute: toInt(process.env.OPENAI_RATE_LIMIT_RPM, 50),
+    // Soft spend cap enforced client-side before issuing a request. Unset (or
+    // <= 0) means "no cap" - cost is still tracked either way.
+    costBudgetUsd: toFloat(process.env.OPENAI_COST_BUDGET_USD, Infinity),
   },
 
   storage: {
@@ -61,6 +78,14 @@ export const env = {
     s3Region: optional('S3_REGION'),
     s3AccessKeyId: optional('S3_ACCESS_KEY_ID'),
     s3SecretAccessKey: optional('S3_SECRET_ACCESS_KEY'),
+  },
+
+  seo: {
+    // Canonical public origin the site is served from (no trailing slash).
+    // Used to build absolute <loc> URLs in sitemap.xml and the Sitemap:
+    // directive in robots.txt (L42-433). Must match the public frontend
+    // origin in production, e.g. https://www.example.com.
+    siteUrl: optional('SITE_URL', 'http://localhost:3000').replace(/\/+$/, ''),
   },
 };
 
