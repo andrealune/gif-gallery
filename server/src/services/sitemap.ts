@@ -69,7 +69,9 @@ let hasWarnedAboutCategories = false;
 // NOTE: expects a `gifs` table with a unique, URL-safe `slug` column and an
 // `updated_at` timestamp (see coordination note posted on L42-414). Adjust
 // here if the migrated schema names these differently.
-const GIFS_QUERY = `SELECT slug, updated_at FROM gifs WHERE is_published = true ORDER BY updated_at DESC LIMIT $1`;
+// Only publicly-visible gifs (see migration 0005's `gif_status` enum + `services/gifs/repository.ts`'s
+// `findGif`, which applies the same rule) should ever appear in the sitemap.
+const GIFS_QUERY = `SELECT slug, updated_at FROM gifs WHERE status = 'active' ORDER BY updated_at DESC LIMIT $1`;
 
 // NOTE: expects a `categories` table with a unique, URL-safe `slug` column
 // and an `updated_at` timestamp.
