@@ -21,7 +21,9 @@ server/
     middleware/  Express middleware (error handling, etc.)
     routes/      route definitions, mounted under /api
     services/
-      ai/        OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
+      ai/          OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
+      categories/  category listing/metadata + gifs-by-category reads (CategoryRepository)
+    utils/       shared request helpers (pagination.ts)
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
@@ -67,6 +69,25 @@ See `.env.example` for the full list. Highlights:
 
 - `GET /api/health` – process liveness (always 200 while the server is up)
 - `GET /api/health/db` – verifies the database pool can reach Postgres (200/503)
+
+## Categories (`src/routes/categories.ts`, `src/services/categories`)
+
+Read-only endpoints over the `categories` table and the gifs assigned to each one (L42-417).
+A gif only counts/appears here while `status = 'active'` (matches the `gifs_active_created_at_idx`
+partial index – archived/flagged/soft-deleted gifs are excluded from public listings).
+
+- `GET /api/categories?limit=&offset=` – lists every category (alphabetical by name) with its
+  `gifCount` metadata. `{ data: Category[], pagination: { limit, offset, total } }`.
+- `GET /api/categories/:idOrSlug` – a single category (looked up by UUID `id` or by `slug`) plus
+  its `gifCount`. `{ data: Category }`, 404 if not found.
+- `GET /api/categories/:idOrSlug/gifs?limit=&offset=` – gifs in that category, newest first.
+  `{ data: Gif[], category: Category, pagination: { limit, offset, total } }`, 404 if the category
+  doesn't exist.
+
+`limit`/`offset` (shared by both paginated routes via `src/utils/pagination.ts`) must be
+non-negative integers; `limit` defaults to 20 (50 for the category list) and is capped at 100.
+An invalid value (non-numeric, negative, fractional, or over the cap) is rejected with `400`
+rather than silently clamped.
 
 ## Database
 
