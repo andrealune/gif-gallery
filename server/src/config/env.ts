@@ -44,6 +44,23 @@ function toBool(value: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+const SEARCH_BACKENDS = ['elasticsearch', 'postgres', 'auto'] as const;
+type SearchBackendSetting = (typeof SEARCH_BACKENDS)[number];
+
+// `SEARCH_BACKEND` (L42-463): explicit switch preferred over silently probing the cluster on every
+// request. An unrecognized value falls back to 'auto' (logged) rather than crashing the whole process
+// over a typo in one env var for one route.
+function toSearchBackend(value: string | undefined): SearchBackendSetting {
+  if (value === undefined || value === '') return 'auto';
+  const normalized = value.toLowerCase();
+  if ((SEARCH_BACKENDS as readonly string[]).includes(normalized)) {
+    return normalized as SearchBackendSetting;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(`Unrecognized SEARCH_BACKEND "${value}" - falling back to "auto". Expected one of: ${SEARCH_BACKENDS.join(', ')}.`);
+  return 'auto';
+}
+
 const port = toInt(process.env.PORT, 3001);
 
 export const env = {
@@ -198,6 +215,17 @@ export const env = {
     // a deploy; leave off in normal operation so restarts don't cause an
     // unplanned extra run.
     runOnStart: toBool(process.env.GENERATION_RUN_ON_START, false),
+  },
+
+  search: {
+    // Selects the backend for `GET /api/search` (L42-463, see search/backend.ts):
+    //   - 'elasticsearch': always use the Elasticsearch-backed GifSearchQueryService (search/searchService.ts).
+    //     Fails at query time if the cluster is unreachable/misconfigured - same as before this switch existed.
+    //   - 'postgres': always use the ILIKE/tsvector-backed PostgresGifSearchQueryService
+    //     (search/postgresSearchService.ts) - lower ranking quality, no Elasticsearch dependency.
+    //   - 'auto' (default): infer from `elasticsearch.syncEnabled` below - Elasticsearch when true, Postgres
+    //     when false (every preview environment per ADR 0001, which sets ELASTICSEARCH_SYNC_ENABLED=false).
+    backend: toSearchBackend(process.env.SEARCH_BACKEND),
   },
 
   elasticsearch: {
