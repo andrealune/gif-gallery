@@ -4,7 +4,9 @@ import { notFound } from 'next/navigation';
 import { ApiError, getGif } from '@/lib/api';
 import { Container } from '@/components/layout/Container';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { JsonLd } from '@/components/seo/JsonLd';
 import { gifOgDescription, gifOgImage, gifOgTitle } from '@/lib/seo';
+import { breadcrumbJsonLd, gifJsonLd } from '@/lib/structuredData';
 
 interface GifPageProps {
   params: Promise<{ slug: string }>;
@@ -74,9 +76,20 @@ export default async function GifPage({ params }: GifPageProps) {
   if (!gif) notFound();
 
   const title = gifOgTitle(gif);
+  const url = `/gif/${gif.slug ?? gif.id}`;
 
   return (
     <Container className="py-10">
+      <JsonLd
+        data={[
+          gifJsonLd(gif, url),
+          breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: title, path: url },
+          ]),
+        ]}
+      />
+
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-slate-500">
         <Link href="/" className="hover:text-brand-700">
           Home
