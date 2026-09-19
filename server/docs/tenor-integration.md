@@ -53,6 +53,12 @@ existing rows and their `fetched_at` timestamp are refreshed rather than duplica
 rolls back its complete transaction. Schedule a refresh at least every 24 hours if Tenor URLs remain
 published.
 
+Each item's Tenor `tags` are also mirrored into the relational `tags`/`gif_tags` tables (case-
+insensitively deduped by a normalized slug), not just into `gifs.metadata`, so gifs are queryable by
+tag -- see "Category and tag population (L42-416)" in `docs/database-schema.md`. This gif does not
+get a `category_id` assigned automatically: Tenor has no category field, so categorization stays a
+curation step.
+
 ## Usage
 
 ```ts
