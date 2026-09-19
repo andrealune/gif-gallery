@@ -106,7 +106,10 @@ describe('GET /api/search', () => {
     expect(service.search).not.toHaveBeenCalled();
   });
 
-  it('propagates unexpected errors to the error handler as a 500', async () => {
+  it('propagates unexpected errors to the error handler as a 500 with a generic public message', async () => {
+    // The error handler (L42-458) intentionally no longer echoes back the raw internal error
+    // message for 5xx failures - only the generic message below reaches the client. The full
+    // detail is still logged server-side by `errorHandler`.
     const service = fakeService({
       search: vi.fn(async () => {
         throw new Error('Elasticsearch is unreachable');
@@ -115,6 +118,6 @@ describe('GET /api/search', () => {
     const res = await request(buildApp(service)).get('/api/search?q=cat');
 
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Elasticsearch is unreachable');
+    expect(res.body.error).toBe('Internal server error');
   });
 });
