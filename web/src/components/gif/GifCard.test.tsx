@@ -53,15 +53,31 @@ describe('GifCard', () => {
     expect(screen.queryByText(/\ds$/)).not.toBeInTheDocument();
   });
 
-  it('omits the category badge when no category is passed', () => {
+  it('links the whole card to the gif detail page by id when no slug is available', () => {
     render(<GifCard gif={baseGif} />);
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Excited clapping/ })).toHaveAttribute('href', '/gif/g1');
   });
 
-  it('shows the category name as a link to its page when passed', () => {
+  it('links by slug instead of id when a slug is available', () => {
+    render(<GifCard gif={{ ...baseGif, slug: 'excited-clapping' }} />);
+    expect(screen.getByRole('link', { name: /Excited clapping/ })).toHaveAttribute('href', '/gif/excited-clapping');
+  });
+
+  it('omits the category badge (and only links to the gif detail page) when no category is passed', () => {
+    render(<GifCard gif={baseGif} />);
+    // Just the card's own detail-page link - no separate category link.
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('shows the category name as its own link to its page when passed, alongside the detail-page link', () => {
     render(<GifCard gif={baseGif} category={{ name: 'Reactions', slug: 'reactions' }} />);
 
     const link = screen.getByRole('link', { name: 'Reactions' });
     expect(link).toHaveAttribute('href', '/category/reactions');
+    // The category link and the detail-page link are siblings, not nested - nesting an <a>
+    // inside another <a> is invalid HTML and would make clicking the category also navigate
+    // to the gif detail page.
+    expect(screen.getAllByRole('link')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: /Excited clapping/ })).toHaveAttribute('href', '/gif/g1');
   });
 });

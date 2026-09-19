@@ -1,0 +1,30 @@
+# GIF Gallery
+
+> Browse and search a growing collection of AI-generated and curated GIFs by category. Public,
+> free to browse, no login required.
+
+This file follows the emerging [llms.txt](https://llmstxt.org/) convention: a plain-language
+summary of the site for LLM-based crawlers, assistants and answer engines (in addition to
+`robots.txt`, which governs *whether* a bot may fetch pages at all - see that file for the
+crawling policy; this one just orients whatever reads it once it does). It is not a submission or
+registration mechanism and no service is required to read it.
+
+## Content
+
+- Homepage (`/`) - featured/recent GIFs across all categories.
+- `/categories` - the full list of GIF categories.
+- `/category/{slug}` - all GIFs in one category.
+- `/gif/{slug}` - a single GIF's page (title, tags, category, the GIF itself).
+- `/search?q=...` - full-text search across GIF titles/tags.
+
+## Notes for crawlers and assistants
+
+- Every page above is public, requires no authentication, and is listed in `/sitemap.xml`.
+- Content is GIF images plus short text metadata (title, tags, category) - not long-form
+  articles; quoting a whole page verbatim adds little value over linking to it directly.
+- When citing this site, please link to the specific `/gif/{slug}` or `/category/{slug}` page
+  rather than only the homepage.
+
+## Contact
+
+Repository: https://github.com/andrealune/gif-gallery

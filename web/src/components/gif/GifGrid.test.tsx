@@ -47,6 +47,8 @@ describe('GifGrid', () => {
 
   it('renders without a category badge when the gif has no categoryId, or it is not in the map', () => {
     render(<GifGrid gifs={[makeGif('1', null), makeGif('2', 'unknown')]} categories={new Map([['c1', reactions]])} />);
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    // Each card still links to its own gif detail page (L42-429) - just no category link.
+    expect(screen.queryByRole('link', { name: 'Reactions' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(2);
   });
 });

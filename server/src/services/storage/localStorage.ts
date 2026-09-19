@@ -1,23 +1,26 @@
 /**
- * Minimal file storage for the batch generation scheduler (L42-424).
- *
- * This is deliberately the smallest thing that lets a generated GIF be
- * persisted and served end-to-end today (local disk, served back out under
- * `/storage` - see `src/app.ts`). It is **not** the full storage
- * abstraction described in `src/config/env.ts`'s `storage` block (S3
- * support, CDN URLs, per-provider retry/error handling, etc.) - that is
- * L42-425's job. Callers (the generation scheduler) only depend on the
- * `GifStorage` interface, so swapping in an S3-backed implementation later
- * needs no change on their side.
+ * File storage for the batch generation scheduler (L42-424), adapted onto
+ * `src/storage`'s `StorageClient` abstraction (L42-425) so a generated GIF
+ * actually lands in S3 (+ is served through the CloudFront CDN) once
+ * `STORAGE_PROVIDER=s3` is configured, with no change needed by the
+ * scheduler itself - it only depends on the narrow `GifStorage` interface
+ * below. See `src/storage/` and `infra/terraform/storage` for the
+ * S3/CloudFront setup this pairs with in staging/production.
  */
 import { promises as fs } from 'fs';
 import path from 'path';
 import { env } from '../../config/env';
+import { s3Storage } from '../../storage/s3Storage';
+import type { StorageClient } from '../../storage/types';
 
 export interface StoredFile {
   /** Publicly-reachable URL the stored file can be retrieved from. */
   url: string;
-  /** Where it actually lives (only meaningful for the local provider). */
+  /**
+   * Where it lives: an absolute filesystem path for the local provider, or
+   * the object's storage key for the s3 provider (there is no filesystem
+   * path in that case - the key is what identifies/locates the object).
+   */
   storagePath: string;
   sizeBytes: number;
 }
@@ -50,13 +53,33 @@ export class LocalGifStorage implements GifStorage {
 }
 
 /**
+ * Adapts `src/storage`'s `StorageClient` (S3, or any other future driver
+ * picked by `STORAGE_PROVIDER`) onto the narrower `GifStorage` interface the
+ * generation scheduler depends on.
+ */
+export class ClientBackedGifStorage implements GifStorage {
+  constructor(private readonly client: Pick<StorageClient, 'putObject'> = s3Storage) {}
+
+  async save(buffer: Buffer, filename: string, mimeType?: string): Promise<StoredFile> {
+    assertSafeFilename(filename);
+    const { key, url } = await this.client.putObject({
+      key: filename,
+      body: buffer,
+      contentType: mimeType,
+    });
+    return { url, storagePath: key, sizeBytes: buffer.length };
+  }
+}
+
+/**
  * Builds the process-wide storage adapter from environment configuration.
- * `STORAGE_PROVIDER=s3` is accepted by config but not implemented yet
- * (L42-425); it falls back to local disk so the scheduler still works
- * end-to-end in the meantime.
+ * `STORAGE_PROVIDER=local` (the default) writes to disk directly;
+ * `STORAGE_PROVIDER=s3` (or any other provider `src/storage` supports)
+ * delegates to that abstraction, e.g. uploading to S3 and returning a
+ * CloudFront-fronted URL when `CDN_BASE_URL` is set.
  */
 export function createGifStorageFromEnv(): GifStorage {
-  return new LocalGifStorage();
+  return env.storage.provider === 'local' ? new LocalGifStorage() : new ClientBackedGifStorage(s3Storage);
 }
 
 export const gifStorage = createGifStorageFromEnv();

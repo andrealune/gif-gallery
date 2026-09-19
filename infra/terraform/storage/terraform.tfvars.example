@@ -1,0 +1,11 @@
+# Example values for a "dev" environment. Copy to dev.tfvars (gitignored) and
+# adjust, or pass equivalent -var flags. Contains no secrets: outputs like the
+# IAM access key/secret are only ever printed by `terraform output`, never
+# stored in a .tfvars file.
+
+environment           = "dev"
+aws_region             = "us-east-1"
+cors_allowed_origins   = ["http://localhost:3000"]
+enable_cdn             = true
+cloudfront_price_class = "PriceClass_100"
+app_iam_user_name      = "gif-gallery-dev-app"
