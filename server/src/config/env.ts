@@ -62,6 +62,14 @@ export const env = {
     s3AccessKeyId: optional('S3_ACCESS_KEY_ID'),
     s3SecretAccessKey: optional('S3_SECRET_ACCESS_KEY'),
   },
+
+  seo: {
+    // Canonical public origin the site is served from (no trailing slash).
+    // Used to build absolute <loc> URLs in sitemap.xml and the Sitemap:
+    // directive in robots.txt (L42-433). Must match the public frontend
+    // origin in production, e.g. https://www.example.com.
+    siteUrl: optional('SITE_URL', 'http://localhost:3000').replace(/\/+$/, ''),
+  },
 };
 
 export type Env = typeof env;
