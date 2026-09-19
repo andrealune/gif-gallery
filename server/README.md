@@ -23,11 +23,13 @@ server/
     services/
       ai/          OpenAI (DALL-E) image generation client, retry/rate-limit/cost tracking
       categories/  category listing/metadata + gifs-by-category reads (CategoryRepository)
+    search/      Elasticsearch client, gifs index mapping, indexing pipeline (docs/elasticsearch.md)
     utils/       shared request helpers (pagination.ts)
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
-  docs/          architecture/data documentation (database-schema.md)
+  docs/          architecture/data documentation (database-schema.md, elasticsearch.md)
+  docker-compose.yml  local Elasticsearch cluster for GIF search
   .env.example   documented list of required/optional env vars
 ```
 
@@ -64,6 +66,7 @@ See `.env.example` for the full list. Highlights:
 - `OPENAI_RATE_LIMIT_RPM` – client-side cap on outgoing requests per minute
 - `OPENAI_COST_BUDGET_USD` – optional soft spend cap enforced before a request is sent
 - `STORAGE_PROVIDER`, `STORAGE_LOCAL_DIR`, `S3_*` – reserved for the file storage setup (see L42-425)
+- `ELASTICSEARCH_NODE`, `ELASTICSEARCH_GIFS_INDEX`, `ELASTICSEARCH_API_KEY`/`USERNAME`/`PASSWORD` – GIF search cluster (see docs/elasticsearch.md)
 
 ## Health checks
 
@@ -127,3 +130,22 @@ See `src/services/ai/*.ts` and `test/ai/*.test.ts` for the full behavior and err
 `OpenAIServerError`, `OpenAITimeoutError`, `CostBudgetExceededError`). No HTTP route is wired up yet -
 this task only sets up the client itself; wiring a `/api/generate` endpoint on top of it is a
 separate, later task.
+
+## Search (`src/search`, Elasticsearch)
+
+GIF search index (title, description, tags, category) backed by
+Elasticsearch, separate from Postgres' own `gifs.search_vector` full-text
+column. Covers deploying a cluster, the index schema, and the bulk indexing
+pipeline (initial load / full rebuild) - full details, rollback procedure
+and scaling notes are in [`docs/elasticsearch.md`](./docs/elasticsearch.md).
+
+Quick start:
+
+```bash
+docker compose up -d              # local single-node cluster (see docker-compose.yml)
+npm run search:reindex            # build the index from the current Postgres data
+```
+
+Keeping the index in sync with individual gif writes as they happen (rather
+than only via a full rebuild) is a separate, later task (L42-419) built on
+top of this module.
