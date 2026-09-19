@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { DEFAULT_PAGE_SIZE } from '@/lib/config';
-import { categoryOgDescription } from '@/lib/seo';
+import { buildKeywords, categoryOgDescription } from '@/lib/seo';
 import { breadcrumbJsonLd, categoryJsonLd } from '@/lib/structuredData';
 
 interface CategoryPageProps {
@@ -36,10 +36,12 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
     const preview = gifs.items[0];
     const previewImage = preview ? preview.thumbnailUrl ?? preview.url : null;
     const url = `/category/${category.slug}`;
+    const keywords = buildKeywords(category.name, `${category.name} gifs`, `${category.name} gif`);
 
     return {
       title: category.name,
       description,
+      keywords,
       alternates: { canonical: url },
       openGraph: {
         title: category.name,

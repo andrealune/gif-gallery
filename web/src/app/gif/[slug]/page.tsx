@@ -5,7 +5,7 @@ import { ApiError, getGif } from '@/lib/api';
 import { Container } from '@/components/layout/Container';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { gifOgDescription, gifOgImage, gifOgTitle } from '@/lib/seo';
+import { buildKeywords, gifOgDescription, gifOgImage, gifOgTitle } from '@/lib/seo';
 import { breadcrumbJsonLd, gifJsonLd } from '@/lib/structuredData';
 
 interface GifPageProps {
@@ -33,10 +33,12 @@ export async function generateMetadata({ params }: GifPageProps): Promise<Metada
     const description = gifOgDescription(gif);
     const image = gifOgImage(gif);
     const url = `/gif/${gif.slug ?? gif.id}`;
+    const keywords = buildKeywords(title, `${title} gif`, `${title} animated gif`);
 
     return {
       title,
       description,
+      keywords,
       alternates: { canonical: url },
       openGraph: {
         type: 'website',
