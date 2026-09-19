@@ -52,4 +52,16 @@ describe('GifCard', () => {
     render(<GifCard gif={{ ...baseGif, durationMs: null }} />);
     expect(screen.queryByText(/\ds$/)).not.toBeInTheDocument();
   });
+
+  it('omits the category badge when no category is passed', () => {
+    render(<GifCard gif={baseGif} />);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('shows the category name as a link to its page when passed', () => {
+    render(<GifCard gif={baseGif} category={{ name: 'Reactions', slug: 'reactions' }} />);
+
+    const link = screen.getByRole('link', { name: 'Reactions' });
+    expect(link).toHaveAttribute('href', '/category/reactions');
+  });
 });
