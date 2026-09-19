@@ -18,6 +18,13 @@ import {
  * degrade, but the rest of the app is unaffected) and this simply skips
  * starting the job -- restart once the cluster is back, or run
  * `npm run search:sync` separately in the meantime.
+ *
+ * Deliberately not awaited by `main()` before it calls `app.listen()` (see
+ * L42-458): the Elasticsearch reachability check below can be slow (up to
+ * the request timeout) when the cluster is unreachable, and there is no
+ * reason the HTTP listener - and every non-search route - should wait on
+ * it. `main()` instead fires this in the background and only wires up the
+ * resulting job (for graceful shutdown) once/if it resolves.
  */
 async function startSearchSyncJob(): Promise<GifSearchSyncJob | null> {
   if (!env.elasticsearch.syncEnabled) {
@@ -62,7 +69,6 @@ async function main(): Promise<void> {
     );
   }
 
-  const syncJob = await startSearchSyncJob();
   // Batch generation scheduler (L42-424) - no-op unless
   // GENERATION_SCHEDULER_ENABLED is set; see src/config/env.ts.
   startGenerationScheduler();
@@ -72,10 +78,35 @@ async function main(): Promise<void> {
     console.log(`gif-gallery server listening on port ${env.port} (${env.nodeEnv})`);
   });
 
+  // Started in the background, after the listener is already up (L42-458) - see the
+  // `startSearchSyncJob` doc comment above for why this isn't awaited here. `syncJob` is filled
+  // in once/if it resolves, purely so `shutdown()` below can stop it cleanly; nothing else in this
+  // module depends on it being ready yet.
+  let syncJob: GifSearchSyncJob | null = null;
+  let syncJobStarting = true;
+  const syncJobReady = startSearchSyncJob()
+    .then((job) => {
+      syncJob = job;
+      return job;
+    })
+    .catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to start the gifs Elasticsearch sync job', error);
+      return null;
+    })
+    .finally(() => {
+      syncJobStarting = false;
+    });
+
   const shutdown = async (signal: string): Promise<void> => {
     // eslint-disable-next-line no-console
     console.log(`Received ${signal}, shutting down gracefully...`);
     stopGenerationScheduler();
+    // Make sure the background bootstrap above has settled (and, if it started a job, that
+    // `syncJob` has been filled in) before deciding whether there's anything to stop.
+    if (syncJobStarting) {
+      await syncJobReady;
+    }
     server.close(async () => {
       await syncJob?.stop();
       await closeElasticsearchClient();
