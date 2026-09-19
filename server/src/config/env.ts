@@ -9,9 +9,13 @@ function optional(name: string, fallback = ''): string {
   return process.env[name] ?? fallback;
 }
 
-function requiredInProduction(name: string): string {
+// Required in production only when the feature that actually consumes
+// `name` is enabled (e.g. the batch generation scheduler below, gated by
+// GENERATION_SCHEDULER_ENABLED, default false). Booting the whole server
+// should never depend on credentials for a feature that is off.
+function requiredInProductionWhen(name: string, enabled: boolean): string {
   const value = process.env[name];
-  if (!value && process.env.NODE_ENV === 'production') {
+  if (!value && enabled && process.env.NODE_ENV === 'production') {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value ?? '';
@@ -73,7 +77,16 @@ export const env = {
 
   ai: {
     // OpenAI (DALL-E) image generation client - see src/services/ai.
-    openaiApiKey: requiredInProduction('OPENAI_API_KEY'),
+    // Only the batch generation scheduler (src/services/generation, gated
+    // by GENERATION_SCHEDULER_ENABLED below) reads this key today - no HTTP
+    // route triggers AI generation on demand - so only require it in
+    // production when that scheduler is actually turned on. Requiring it
+    // unconditionally would fail the whole server to boot (including in
+    // deployments/previews that never enable AI generation).
+    openaiApiKey: requiredInProductionWhen(
+      'OPENAI_API_KEY',
+      toBool(process.env.GENERATION_SCHEDULER_ENABLED, false),
+    ),
     baseUrl: optional('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
     imageModel: optional('OPENAI_IMAGE_MODEL', 'dall-e-3'),
     imageSize: optional('OPENAI_IMAGE_SIZE', '1024x1024'),
@@ -158,6 +171,7 @@ export const env = {
     // unplanned extra run.
     runOnStart: toBool(process.env.GENERATION_RUN_ON_START, false),
   },
+
   elasticsearch: {
     // GIF search cluster - see src/search and docs/elasticsearch.md (L42-418).
     // Local dev: docker-compose.yml starts a single-node cluster at this
