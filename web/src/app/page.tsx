@@ -8,6 +8,31 @@ import { SearchForm } from '@/components/search/SearchForm';
 import { SITE_DESCRIPTION } from '@/lib/config';
 import { buildKeywords } from '@/lib/seo';
 
+/**
+ * Force this route to render per-request instead of being prerendered as static content at
+ * `next build` time (L42-456).
+ *
+ * `getCategories()` below has no `cache: 'no-store'`/dynamic function to opt it out on its own -
+ * unlike every other data-fetching route in this app (`/category/[slug]`, `/gif/[slug]`,
+ * `/search`), which all read `searchParams` and are therefore already "server-rendered on demand"
+ * (see their `ƒ` marker in `next build`'s route summary) - so Next.js was free to treat `/` as
+ * static (`○`) and fetch `getCategories()` once, at build time, to bake into the prerendered HTML.
+ *
+ * `web/` and `server/` are separate services (separate `package.json`s, separate default ports),
+ * so there's no guarantee the API is up and reachable from wherever `next build` runs - it very
+ * often isn't (a CI/build step, or a preview whose `server` container hasn't started yet). When
+ * it's unreachable, the exact "Could not reach the gallery API (...). Is the server running?"
+ * message that `apiFetch` throws (see `lib/api.ts`) gets caught by the `try/catch` below same as
+ * always, but the resulting `<ErrorState>` then gets frozen into that one static HTML file and
+ * served to every visitor - it does *not* self-heal once the API comes up, since nothing here
+ * ever requests as `/` again to trigger the `revalidate: 60` window `getCategories` sets.
+ *
+ * Forcing dynamic rendering makes `/` behave like the rest of the app: every request runs this
+ * function fresh, against whatever server is actually reachable at request time, and `next build`
+ * no longer touches the network (or the API) at all.
+ */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   keywords: buildKeywords('browse gifs', 'gif categories', 'free gifs'),
