@@ -23,6 +23,12 @@ function toInt(value: string | undefined, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function toOptionalInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 function toFloat(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = parseFloat(value);
@@ -68,6 +74,32 @@ export const env = {
     // Soft spend cap enforced client-side before issuing a request. Unset (or
     // <= 0) means "no cap" - cost is still tracked either way.
     costBudgetUsd: toFloat(process.env.OPENAI_COST_BUDGET_USD, Infinity),
+  },
+
+  gif: {
+    // Image-to-GIF conversion pipeline - see src/services/gif (L42-422).
+    // Shells out to `ffmpeg` (and `ffprobe`, for best-effort result
+    // metadata); both must be on PATH unless overridden here.
+    ffmpegPath: optional('FFMPEG_PATH', 'ffmpeg'),
+    ffprobePath: optional('FFPROBE_PATH', 'ffprobe'),
+    // '' (default) means "use os.tmpdir()".
+    tmpDir: optional('GIF_TMP_DIR', ''),
+    defaultWidth: toInt(process.env.GIF_DEFAULT_WIDTH, 480),
+    // Unset by default: multi-frame conversions then preserve the source
+    // aspect ratio; the single-image Ken Burns path falls back to a square
+    // frame (height = width) since ffmpeg's zoompan filter needs both axes.
+    defaultHeight: toOptionalInt(process.env.GIF_DEFAULT_HEIGHT),
+    defaultFps: toInt(process.env.GIF_DEFAULT_FPS, 10),
+    // GIF loop count: 0 = loop forever, -1 = play once, N > 0 = loop N extra times.
+    defaultLoop: toInt(process.env.GIF_DEFAULT_LOOP, 0),
+    defaultDither: optional('GIF_DEFAULT_DITHER', 'sierra2_4a'),
+    // Ken Burns (pan/zoom) animation applied to single still images.
+    kenBurnsZoom: toFloat(process.env.GIF_KEN_BURNS_ZOOM, 1.15),
+    kenBurnsDurationMs: toInt(process.env.GIF_KEN_BURNS_DURATION_MS, 3000),
+    conversionTimeoutMs: toInt(process.env.GIF_CONVERSION_TIMEOUT_MS, 30000),
+    maxInputBytes: toInt(process.env.GIF_MAX_INPUT_BYTES, 25 * 1024 * 1024),
+    // Max number of conversions `convertBatch` runs at once by default.
+    batchConcurrency: toInt(process.env.GIF_BATCH_CONCURRENCY, 3),
   },
 
   storage: {
