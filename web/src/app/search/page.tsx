@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SearchForm } from '@/components/search/SearchForm';
 import { DEFAULT_PAGE_SIZE } from '@/lib/config';
+import { buildKeywords, truncate } from '@/lib/seo';
 
 interface SearchPageProps {
   searchParams: Promise<{ q?: string; offset?: string }>;
@@ -19,13 +20,19 @@ function parseOffset(raw: string | undefined): number {
 
 export async function generateMetadata({ searchParams }: SearchPageProps): Promise<Metadata> {
   const { q } = await searchParams;
+  const query = q?.trim();
+
   return {
-    title: q ? `Search results for "${q}"` : 'Search',
+    title: query ? `Search results for "${query}"` : 'Search',
+    description: query
+      ? truncate(`GIF search results for "${query}".`)
+      : 'Search the gallery for GIFs by keyword.',
+    keywords: buildKeywords(query, 'gif search', 'search gifs'),
     // Query-string search-result pages are unbounded (one per possible query), near-duplicates of
     // each other, and not something we want ranked directly - `/search` itself (no query) stays
     // indexable as the entry point. This is a `noindex`, not a `nofollow`: crawlers should still
     // follow links from a results page to the GIF/category pages it lists.
-    robots: q ? { index: false, follow: true } : undefined,
+    robots: query ? { index: false, follow: true } : undefined,
   };
 }
 

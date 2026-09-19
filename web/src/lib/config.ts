@@ -24,4 +24,13 @@ export const SITE_NAME = 'GIF Gallery';
 export const SITE_DESCRIPTION =
   'Browse and search a growing collection of AI-generated and curated GIFs by category.';
 
+/**
+ * Baseline `<meta name="keywords">` terms every page includes (L42-434). Modern search engines
+ * (Google, Bing) no longer rank on this tag, but it's still cheap, harmless, and explicitly asked
+ * for by that ticket - so every page merges its own specific terms (category name, gif title, ...)
+ * into this list via `buildKeywords` (see `lib/seo.ts`) rather than each page inventing its own
+ * baseline from scratch.
+ */
+export const SITE_KEYWORDS = ['gif', 'gifs', 'animated gif', 'gif gallery', 'gif search', SITE_NAME.toLowerCase()];
+
 export const DEFAULT_PAGE_SIZE = 24;

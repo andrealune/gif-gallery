@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { absoluteUrl, gifOgDescription, gifOgImage, gifOgTitle, truncate } from './seo';
+import { absoluteUrl, buildKeywords, gifOgDescription, gifOgImage, gifOgTitle, truncate } from './seo';
 import type { GifDetail } from './api';
 
 const baseGif: GifDetail = {
@@ -84,5 +84,31 @@ describe('gifOgImage', () => {
 
   it('returns null when there is no image at all', () => {
     expect(gifOgImage({ ...baseGif, thumbnailUrl: null, url: '' })).toBeNull();
+  });
+});
+
+describe('buildKeywords', () => {
+  it('includes the page-specific terms plus the site-wide baseline', () => {
+    const keywords = buildKeywords('Cats', 'cats gifs');
+    expect(keywords[0]).toBe('cats');
+    expect(keywords[1]).toBe('cats gifs');
+    expect(keywords).toContain('gif');
+    expect(keywords).toContain('gif gallery');
+  });
+
+  it('lowercases, trims, and de-duplicates (including against the baseline)', () => {
+    const keywords = buildKeywords('  GIF  ', 'Gif', 'Cats');
+    expect(keywords.filter((k) => k === 'gif')).toHaveLength(1);
+    expect(keywords).toContain('cats');
+  });
+
+  it('drops null/undefined/empty terms without producing empty entries', () => {
+    const keywords = buildKeywords(undefined, null, '', '   ');
+    expect(keywords.every((k) => k.length > 0)).toBe(true);
+  });
+
+  it('caps the result at 15 keywords', () => {
+    const many = Array.from({ length: 30 }, (_, i) => `term-${i}`);
+    expect(buildKeywords(...many).length).toBeLessThanOrEqual(15);
   });
 });

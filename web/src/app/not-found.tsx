@@ -1,5 +1,16 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Container } from '@/components/layout/Container';
+
+// Next.js already sends a real `404` status for this page, which is the primary signal crawlers
+// use to skip indexing it - this `metadata` export is defense-in-depth (L42-434): some CDNs/static
+// hosts can end up serving a not-found page with a `200`, and an explicit `noindex` keeps it out of
+// search results either way.
+export const metadata: Metadata = {
+  title: 'Page not found',
+  description: "The page you're looking for doesn't exist or may have moved.",
+  robots: { index: false, follow: true },
+};
 
 export default function NotFound() {
   return (
