@@ -17,6 +17,7 @@
         "STORAGE_LOCAL_DIR": "./storage",
         "STORAGE_PUBLIC_BASE_URL": "${apps.server.url}/storage",
         "ELASTICSEARCH_SYNC_ENABLED": "false",
+        "SEARCH_BACKEND": "postgres",
         "GENERATION_SCHEDULER_ENABLED": "false",
         "GENERATION_RUN_ON_START": "false"
       }

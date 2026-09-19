@@ -10,10 +10,6 @@ apiRouter.use('/health', healthRouter);
 apiRouter.use('/categories', createCategoriesRouter());
 apiRouter.use('/search', createSearchRouter());
 
-// Feature routers (gifs, generate, ...) are added by later tasks and mounted here, e.g.:
-// apiRouter.use('/gifs', gifsRouter);
-apiRouter.use('/gifs', createGifsRouter());
-apiRouter.use('/search', createSearchRouter());
-
 // Feature routers (generate, ...) are added by later tasks and mounted here, e.g.:
 // apiRouter.use('/generate', generateRouter);
+apiRouter.use('/gifs', createGifsRouter());

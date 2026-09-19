@@ -219,3 +219,47 @@ math used by the pipeline, and the sync job's batching/cursor/upsert-vs-
 delete logic (all via a fake client, same pattern as
 `test/tenor/client.test.ts`'s fake `fetch`). There is no integration test
 against a real Elasticsearch cluster in CI yet.
+
+## Postgres fallback (`SEARCH_BACKEND`, L42-463)
+
+`GET /api/search` no longer hard-depends on Elasticsearch. `src/search/backend.ts#createGifSearchQueryService`
+picks the implementation `routes/search.ts` uses, controlled by `SEARCH_BACKEND` (`.env.example`):
+
+- `elasticsearch`: always the `GifSearchQueryService` documented above. Fails at query time if the
+  cluster is unreachable/misconfigured - unchanged from before this switch existed.
+- `postgres`: always `PostgresGifSearchQueryService` (`src/search/postgresSearchService.ts`) - ranks and
+  hydrates in a single Postgres query, no Elasticsearch dependency at all.
+- `auto` (default): infers from `ELASTICSEARCH_SYNC_ENABLED` above - Elasticsearch when it's `true`,
+  Postgres when it's `false`. Every preview environment sets `ELASTICSEARCH_SYNC_ENABLED=false` (ADR
+  0001 - previews have no Elasticsearch service/cluster) and now also sets `SEARCH_BACKEND=postgres`
+  explicitly in `.berry/preview.json`, so `/search` and the header typeahead work (with the ranking
+  caveats below) in every preview instead of showing the API error state.
+
+Both backends implement the same `GifSearchQueryServiceLike` interface and return the exact same
+`{ items, total, limit, offset }` shape (`routes/search.ts` wraps it into the same `{ data, pagination }`
+envelope either way), so `web/src/lib/api.ts#searchGifs` needed no change.
+
+**Ranking quality is lower on the Postgres backend.** It uses only core Postgres full-text search - the
+`gifs.search_vector` generated `tsvector` column already created by `migrations/0005` (title weighted
+`A`, description weighted `B`), combined on the fly with the gif's category name and tag names (not
+part of `search_vector`, joined and `to_tsvector`'d per query instead):
+
+- Per-word **prefix** matching (`token:*`) instead of Elasticsearch's `fuzziness: 'AUTO'` - a typo is
+  not tolerated, only a partial trailing word (the header typeahead's common case, e.g. "danc" still
+  matches "dancing").
+- No cross-field boosting beyond `search_vector`'s fixed weights - category/tag matches rank at the
+  same (lowest, implicit) weight rather than Elasticsearch's tuned `title^3`/`tags.text`/`category.name`
+  fields (`searchQuery.ts#SEARCH_FIELDS`).
+- Tag/category matching is a correlated subquery per row, not GIN-indexed like `search_vector` itself -
+  fine at this project's target catalog size (`gifsIndex.ts`: 10k-100k documents) but not as fast as
+  Elasticsearch at any scale.
+- Deliberately **no `pg_trgm`**/other contrib extension: `test/migrations.test.ts` runs the whole schema
+  against the embedded PGlite engine, which has no contrib extensions available at all (see
+  `migrations/0001_enable_extensions.up.sql`'s note) - the Postgres fallback only relies on core
+  `tsvector`/`tsquery`, so it works in that same environment.
+
+**Testing.** `test/search/postgresSearchService.test.ts` and
+`test/search/routes.postgresBackend.test.ts` cover the Postgres backend against a real (embedded)
+Postgres, the same PGlite technique `test/migrations.test.ts` uses - ranking order, category filtering
+(by id and by slug), tag matching, pagination/total, and the empty-query/no-match edge cases.
+`test/search/backend.test.ts` covers `SEARCH_BACKEND`'s `elasticsearch`/`postgres`/`auto` resolution.
