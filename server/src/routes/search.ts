@@ -12,6 +12,15 @@ import { parsePagination } from '../utils/pagination';
  * `service` defaults to a real `GifSearchQueryService` (backed by the
  * shared Elasticsearch client + Postgres pool) but can be swapped for a
  * fake in tests - see `test/search/routes.test.ts`.
+ *
+ * L42-461: when `service.search()` had to fall back to Postgres full-text
+ * search (Elasticsearch disabled or unreachable - see
+ * `search/searchService.ts`), the response gets an extra `degraded: true`
+ * field alongside `data`/`pagination`, plus an `X-Search-Degraded: true`
+ * header for callers that would rather not parse the body, so the client
+ * can show a "basic search" notice. Omitted entirely otherwise, so this is
+ * additive - an existing caller that only reads `data`/`pagination` sees no
+ * change.
  */
 export function createSearchRouter(service: GifSearchQueryServiceLike = new GifSearchQueryService()): Router {
   const router = Router();
@@ -25,9 +34,14 @@ export function createSearchRouter(service: GifSearchQueryServiceLike = new GifS
 
       const result = await service.search({ q, category, limit, offset });
 
+      if (result.degraded) {
+        res.setHeader('X-Search-Degraded', 'true');
+      }
+
       res.json({
         data: result.items,
         pagination: { limit: result.limit, offset: result.offset, total: result.total },
+        ...(result.degraded ? { degraded: true } : {}),
       });
     } catch (err) {
       next(err);

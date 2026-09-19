@@ -205,6 +205,17 @@ export const env = {
     // Local dev: docker-compose.yml starts a single-node cluster at this
     // default. Cloud/production: point at the managed endpoint and set
     // ELASTICSEARCH_API_KEY (preferred) or USERNAME/PASSWORD.
+    //
+    // Master switch (L42-461): ADR 0001 deliberately leaves Elasticsearch out
+    // of preview environments (extra container, 512m heap, 30s+ readiness,
+    // index creation/reindex, against a database with no gif rows), and a
+    // production cluster can legitimately be unreachable too. Set to `false`
+    // (every preview does, see `.berry/preview.json`) to skip Elasticsearch
+    // entirely and go straight to `GifSearchQueryService`'s Postgres
+    // full-text fallback (`search/postgresFallback.ts`) - and it is also the
+    // switch that flips automatically, per request, when this stays `true`
+    // but a query against the cluster throws.
+    enabled: toBool(process.env.ELASTICSEARCH_ENABLED, true),
     node: optional('ELASTICSEARCH_NODE', 'http://localhost:9200'),
     // Alias the application queries/writes through; the pipeline manages the
     // real versioned indices (gifs_v1, gifs_v2, ...) behind it.
