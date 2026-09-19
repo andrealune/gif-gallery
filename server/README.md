@@ -14,9 +14,10 @@ Backend API for the AI-powered GIF gallery website (Node.js + TypeScript + Expre
 
 ```
 server/
+  migrations/    SQL schema migrations (NNNN_name.up.sql / .down.sql pairs)
   src/
     config/      environment variable loading & validation (env.ts)
-    db/          database connection pool (pool.ts)
+    db/          database connection pool (pool.ts) and migration runner (migrate.ts)
     middleware/  Express middleware (error handling, etc.)
     routes/      route definitions, mounted under /api
     services/
@@ -24,6 +25,7 @@ server/
     app.ts       Express app factory (used by tests and index.ts)
     index.ts     process entry point: starts the HTTP server
   test/          vitest test suites
+  docs/          architecture/data documentation (database-schema.md)
   .env.example   documented list of required/optional env vars
 ```
 
@@ -42,6 +44,9 @@ Other scripts:
 - `npm start` – run the compiled server (`dist/index.js`)
 - `npm test` – run the test suite
 - `npm run lint` – lint the codebase
+- `npm run migrate:status` – list applied/pending schema migrations
+- `npm run migrate:up` – apply all pending schema migrations
+- `npm run migrate:down [-- --step N]` – roll back the most recent migration (or the last N)
 
 ## Environment variables
 
