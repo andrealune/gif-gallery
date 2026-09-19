@@ -60,6 +60,17 @@ export const env = {
     connectionTimeoutMillis: toInt(process.env.DB_CONNECTION_TIMEOUT_MS, 5000),
   },
 
+  tenor: {
+    // Tenor API v2. Existing client credentials are required; Tenor stopped
+    // accepting new API clients in January 2026 and will shut down June 30, 2026.
+    apiKey: optional('TENOR_API_KEY'),
+    clientKey: optional('TENOR_CLIENT_KEY', 'gif_gallery'),
+    requestTimeoutMs: toInt(process.env.TENOR_REQUEST_TIMEOUT_MS, 5000),
+    maxRetries: toInt(process.env.TENOR_MAX_RETRIES, 3),
+    retryBaseDelayMs: toInt(process.env.TENOR_RETRY_BASE_DELAY_MS, 500),
+    requestsPerSecond: toFloat(process.env.TENOR_REQUESTS_PER_SECOND, 1),
+  },
+
   ai: {
     // OpenAI (DALL-E) image generation client - see src/services/ai.
     openaiApiKey: requiredInProduction('OPENAI_API_KEY'),

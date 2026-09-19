@@ -79,6 +79,35 @@ image it was converted from). Keeping provenance in its own table means the cata
 and provider-agnostic, and provider-specific audit data (raw API responses) doesn't bloat every gif row
 or its indexes.
 
+## Category and tag population (L42-416)
+
+Schema/relations for category-GIF and tag-GIF mapping (`categories`, `tags`, `gif_tags`,
+`gifs.category_id`) were already in place from L42-414. What was missing until L42-416 was the
+write path actually populating `tags`/`gif_tags` from provider data:
+
+- `TenorGifRepository.store()` (`src/services/tenor/repository.ts`) now upserts each of Tenor's
+  free-text `tags` into the shared `tags` table (matched case-insensitively via a normalized
+  `slug`, see `slugifyTag`) and re-syncs that gif's `gif_tags` rows to match exactly on every
+  import -- so a tag the provider drops on a later refresh is unlinked, not left stale. Tags with
+  no ASCII-alphanumeric content (pure emoji/punctuation) are skipped rather than failing the
+  import. This runs inside the same transaction as the gif upsert, so a gif and its tags are never
+  left half-written.
+- Previously, provider tags were only recorded inside `gifs.metadata->>'tags'` (a JSON blob) --
+  useful for audit/debugging but not queryable/indexable as a relation. That JSON copy is kept
+  (for provenance/debugging) in addition to, not instead of, the relational one.
+- **Categories remain curation, not automatic-from-tags.** `gifs.category_id` is nullable and the
+  Tenor importer does not guess a category from tags -- Tenor has no category field, only
+  free-text tags, and mapping "cat" or "monday" to one of the 8 seeded categories reliably needs a
+  product-owned rule set (or manual/AI curation), not a database-layer heuristic. Any such mapping
+  should be designed as its own reviewed piece of work (see L42-423, which defines
+  categories/prompts for AI generation and is blocked on this task) rather than guessed here.
+- `docs/tenor-integration.md` documents the same behavior from the integration's point of view.
+
+Consumers that need "gifs in category X" or "gifs tagged Y" should query through `gifs.category_id`
+and the `gif_tags` join respectively (see indexes: `gifs_category_id_idx`, `gif_tags_tag_id_idx`,
+plus the PK on `gif_tags(gif_id, tag_id)` for the reverse lookup) -- building the actual listing
+endpoints is tracked separately in L42-417.
+
 **Design decisions worth flagging to reviewers:**
 
 - *Single category, many tags* -- matches the issue's singular "category" vs. plural "tags" wording.
