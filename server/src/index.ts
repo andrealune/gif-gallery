@@ -48,6 +48,7 @@ async function startSearchSyncJob(): Promise<GifSearchSyncJob | null> {
   console.log('Started the gifs Elasticsearch sync job.');
   return job;
 }
+import { startGenerationScheduler, stopGenerationScheduler } from './services/generation';
 
 async function main(): Promise<void> {
   const app = createApp();
@@ -62,6 +63,9 @@ async function main(): Promise<void> {
   }
 
   const syncJob = await startSearchSyncJob();
+  // Batch generation scheduler (L42-424) - no-op unless
+  // GENERATION_SCHEDULER_ENABLED is set; see src/config/env.ts.
+  startGenerationScheduler();
 
   const server = app.listen(env.port, () => {
     // eslint-disable-next-line no-console
@@ -71,6 +75,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     // eslint-disable-next-line no-console
     console.log(`Received ${signal}, shutting down gracefully...`);
+    stopGenerationScheduler();
     server.close(async () => {
       await syncJob?.stop();
       await closeElasticsearchClient();
