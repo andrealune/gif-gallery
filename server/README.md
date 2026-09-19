@@ -8,6 +8,7 @@ Backend API for the AI-powered GIF gallery website (Node.js + TypeScript + Expre
 - Express for HTTP routing/middleware
 - `pg` with a connection pool for PostgreSQL access
 - `helmet`, `cors`, `morgan` for baseline HTTP hardening/logging
+- `ffmpeg`/`ffprobe` (external binaries) for the image-to-GIF conversion pipeline
 - `vitest` + `supertest` for tests
 
 ## Project structure
@@ -50,6 +51,11 @@ Other scripts:
 - `npm run migrate:up` – apply all pending schema migrations
 - `npm run migrate:down [-- --step N]` – roll back the most recent migration (or the last N)
 
+**System dependency:** the image-to-GIF pipeline (`src/services/gif`) shells out to `ffmpeg`/`ffprobe`.
+Install them locally (e.g. `apt-get install ffmpeg` / `brew install ffmpeg`) before running
+`test/gif/*.test.ts` or anything that imports `src/services/gif`; those tests skip themselves with a
+console warning (instead of failing) if the binaries aren't on `PATH`.
+
 ## Environment variables
 
 See `.env.example` for the full list. Highlights:
@@ -63,6 +69,11 @@ See `.env.example` for the full list. Highlights:
 - `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_RETRIES`, `OPENAI_RETRY_BASE_DELAY_MS` – retry/timeout tuning
 - `OPENAI_RATE_LIMIT_RPM` – client-side cap on outgoing requests per minute
 - `OPENAI_COST_BUDGET_USD` – optional soft spend cap enforced before a request is sent
+- `FFMPEG_PATH`, `FFPROBE_PATH` – override if the binaries aren't plain `ffmpeg`/`ffprobe` on `PATH`
+- `GIF_DEFAULT_WIDTH`, `GIF_DEFAULT_HEIGHT`, `GIF_DEFAULT_FPS`, `GIF_DEFAULT_LOOP`, `GIF_DEFAULT_DITHER` –
+  defaults for the image-to-GIF conversion pipeline (see below)
+- `GIF_KEN_BURNS_ZOOM`, `GIF_KEN_BURNS_DURATION_MS` – single-image pan/zoom animation tuning
+- `GIF_CONVERSION_TIMEOUT_MS`, `GIF_MAX_INPUT_BYTES`, `GIF_BATCH_CONCURRENCY` – pipeline safety/performance limits
 - `STORAGE_PROVIDER`, `STORAGE_LOCAL_DIR`, `S3_*` – reserved for the file storage setup (see L42-425)
 
 ## Health checks
@@ -127,3 +138,52 @@ See `src/services/ai/*.ts` and `test/ai/*.test.ts` for the full behavior and err
 `OpenAIServerError`, `OpenAITimeoutError`, `CostBudgetExceededError`). No HTTP route is wired up yet -
 this task only sets up the client itself; wiring a `/api/generate` endpoint on top of it is a
 separate, later task.
+
+## Image-to-GIF conversion pipeline (`src/services/gif`)
+
+`gifConverter` (exported from `src/services/gif`) turns one or more still images - e.g. straight off
+`openaiImageClient.generateImage()` - into an animated GIF by shelling out to `ffmpeg`:
+
+```ts
+import { gifConverter, imageInputFromGeneratedImage } from './services/gif';
+
+const generated = await openaiImageClient.generateImage({ prompt: 'a corgi skateboarding' });
+const { gif, width, height, frameCount } = await gifConverter.convert(
+  [imageInputFromGeneratedImage(generated.images[0])],
+  { width: 480 }
+);
+// gif is a Buffer of GIF89a bytes, ready to hand to the file storage layer (L42-425).
+```
+
+Two conversion modes, chosen automatically from the number of frames given:
+
+- **Multiple frames** are assembled in order into one animated GIF (via ffmpeg's `concat` demuxer),
+  each shown for an equal (`fps`) or individually-specified (`frameDurationsMs`) duration.
+- **A single frame** gets a short synthetic pan/zoom ("Ken Burns") animation via ffmpeg's `zoompan`
+  filter by default - useful since an AI image generator produces one static image per call, not a
+  ready-made animation. Pass `kenBurns: false` for a plain still frame instead.
+
+Every input can be a `Buffer`, a base64 string (bare or `data:` URL - as returned by
+`b64_json`/`GeneratedImage.b64Json`), a local file path, or a remote URL (fetched, size- and
+time-bounded); see `imageInputFrom*` in `src/services/gif/types.ts`. Every conversion re-encodes
+through ffmpeg's two-pass palette filters (`palettegen`/`paletteuse`) for noticeably better color
+quality than the GIF encoder's flat default palette.
+
+**Batch conversion:** `gifConverter.convertBatch(jobs)` runs several independent conversions (each
+its own `{ id, frames, options }` job) with bounded concurrency (`GIF_BATCH_CONCURRENCY`, default 3).
+One job failing (bad input, ffmpeg crash, timeout, ...) is reported as its own
+`{ status: 'rejected', error }` outcome and does **not** abort the rest of the batch:
+
+```ts
+const summary = await gifConverter.convertBatch([
+  { id: 'a', frames: [imageInputFromUrl(urlA)] },
+  { id: 'b', frames: [imageInputFromUrl(urlB)] },
+]);
+// summary.succeeded, summary.failed, summary.results[i] -> { id, status, result | error }
+```
+
+See `src/services/gif/*.ts` and `test/gif/*.test.ts` for the full behavior and error types
+(`InvalidImageInputError`, `InvalidOptionsError`, `ImageFetchError`, `FfmpegNotFoundError`,
+`FfmpegExecutionError`, `GifConversionTimeoutError`). No HTTP route or job queue is wired up yet -
+this task only builds the conversion pipeline itself; the batch generation scheduler that drives it
+end-to-end (generate → convert → store) is a separate, later task (L42-424).
