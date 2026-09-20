@@ -1,61 +1,82 @@
 -- Migration: 0009_create_generation_prompts_table
--- Purpose: category -> prompt mapping that drives the AI batch generation
---   scheduler (L42-424): which text prompt(s) are eligible to be sent to the
---   image-generation API for a given category. Implements the data model
---   and business rules (BR-1..BR-7) from
---   docs/specs/ai-generation-prompts-spec.md (L42-423).
+-- Purpose: category -> AI-image-generation-prompt mapping (L42-423 spec,
+--   FR-1..FR-5). Each row is one candidate prompt for a category; the batch
+--   scheduler (L42-424) reads the active ones for a category and picks among
+--   them (BR-1, BR-2). This is seed/config data maintained by
+--   engineering/content owners, not end users (no end-user authoring is in
+--   scope).
 --
--- Design notes:
---   * `category_id` is `ON DELETE RESTRICT` -- deliberately different from
---     `gifs.category_id` (`ON DELETE SET NULL`). A gif can lose its category
---     and still stand alone as content; a prompt with no category is
---     meaningless (nothing would ever select it), so deleting a category
---     that still has prompt rows is refused. Retirement procedure: (1) set
---     `is_active = false` on every prompt for that category, (2) confirm the
---     scheduler has stopped selecting it (no new `generation_attempts`
---     referencing it), (3) delete the now-inactive prompt rows, then the
---     category itself.
---   * `is_active` (soft-disable, not a hard delete) so a prompt can be
---     paused/retired without losing the `generation_attempts` audit trail
---     that references it (BR-3).
---   * Unique expression index on `(category_id, lower(btrim(prompt_text)))`
---     prevents an intra-category duplicate prompt (BR-5) while still
---     allowing identical wording to be reused across *different*
---     categories.
---   * `prompt_text` is capped at 1000 characters -- the DALL-E 3 prompt
---     limit (BR-4/FR-3).
---
--- Locking behaviour: brand-new table with one FK to categories; no
---   contention on a fresh database.
+-- Locking behaviour: CREATE TABLE on a brand-new table takes an ACCESS
+--   EXCLUSIVE lock that nobody else can be holding yet, since the table does
+--   not exist -- no contention with running queries. The FK to `categories`
+--   takes a brief ROW SHARE lock on `categories` to validate it, not a
+--   table-rewrite lock.
 -- Rollback: 0009_create_generation_prompts_table.down.sql drops the table.
---   Safe once generation_attempts (0010), which references this table, has
---   already been rolled back -- enforced by running `migrate down` in
---   reverse order.
--- Data impact: none, creates an empty table.
+--   Safe at any time, including with populated `generation_attempts` rows --
+--   that table's FK to this one is `ON DELETE SET NULL` (0010), so it never
+--   blocks dropping this table; still rolled back after 0010 by the runner's
+--   reverse-migration-order convention (DROP TABLE requires no live FK
+--   pointing at it, regardless of that FK's ON DELETE action).
+-- Data impact: none, this only creates an empty table.
+--
+-- Category lifecycle policy (deliberately different from
+-- `gifs.category_id`'s `ON DELETE SET NULL`): a prompt with no category is
+-- meaningless (there is nothing for the scheduler to select it *for*), so
+-- `category_id` is NOT NULL and its FK is `ON DELETE RESTRICT`. Deleting a
+-- category that still has prompt rows is refused rather than silently
+-- orphaning/nulling them. Retiring a category that has prompts is a
+-- deliberate procedure (see server/docs/database-schema.md for the full
+-- writeup):
+--   1. Deactivate its prompts: `UPDATE generation_prompts SET is_active =
+--      false WHERE category_id = :id;` -- stops the scheduler from
+--      selecting them immediately (BR-3), while preserving history/audit.
+--      This alone satisfies most "retire this category from AI generation"
+--      needs without deleting anything.
+--   2. Once ready to actually purge, in FK order: `DELETE FROM
+--      generation_prompts WHERE category_id = :id;` then `DELETE FROM
+--      categories WHERE id = :id;`. This is a reviewed, destructive action --
+--      not something a migration or the application does automatically.
+--      Unlike an earlier draft of this migration set, this step is not
+--      blocked by attempt history: `generation_attempts.generation_prompt_id`
+--      is `ON DELETE SET NULL` (0010), not `RESTRICT` -- BR-7 attributability
+--      for existing attempts survives that regardless, because
+--      `generation_attempts` also snapshots `category_id`/`prompt_text`
+--      directly at write time (see 0010's header for why). Deleting still-
+--      referenced attempt rows themselves, if ever required (e.g. a
+--      retention purge), remains a separate, deliberate decision.
+-- Renaming a category (`UPDATE categories SET name = ... WHERE id = :id`) is
+-- unaffected either way: the FK is on `id`, not `name`/`slug`, so a rename
+-- never touches `generation_prompts` rows.
 
 CREATE TABLE generation_prompts (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id  UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+  prompt_text  TEXT NOT NULL,
+  is_active    BOOLEAN NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  category_id   UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-  prompt_text   TEXT NOT NULL,
-  is_active     BOOLEAN NOT NULL DEFAULT true,
-
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-
+  -- FR-3 / BR-4: 1-1000 characters (DALL-E 3 prompt limit). Rejected at
+  -- creation time, not discovered later at API-call time.
   CONSTRAINT generation_prompts_text_not_blank CHECK (btrim(prompt_text) <> ''),
-  CONSTRAINT generation_prompts_text_length CHECK (char_length(prompt_text) <= 1000)
+  CONSTRAINT generation_prompts_text_max_length CHECK (char_length(prompt_text) <= 1000)
 );
 
 CREATE INDEX generation_prompts_category_id_idx ON generation_prompts (category_id);
 
--- Only active prompts are ever selected by the scheduler (BR-1/BR-2); this
--- partial index keeps that hot-path lookup cheap regardless of how many
--- retired prompts accumulate over time.
+-- The scheduler's actual query is "active prompts for category X"
+-- (BR-1/BR-2/BR-3) -- a partial index on the active subset keeps that
+-- lookup cheap without indexing soft-disabled rows nobody selects.
 CREATE INDEX generation_prompts_active_category_idx
   ON generation_prompts (category_id)
   WHERE is_active;
 
+-- BR-5 (referential integrity) is enforced by the FK above; this unique
+-- expression index adds the complementary rule that the same prompt text
+-- cannot be registered twice for the same category (case- and
+-- surrounding-whitespace-insensitive, matching the `categories` table's own
+-- `lower(name)` convention), so seed re-runs and future admin tooling can't
+-- silently accumulate duplicate rows.
 CREATE UNIQUE INDEX generation_prompts_category_text_unique_idx
   ON generation_prompts (category_id, lower(btrim(prompt_text)));
 

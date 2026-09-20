@@ -16,6 +16,10 @@
  * result set sizes here (`limit`, capped well below the index size) it's a
  * single indexed `WHERE id = ANY($1)` lookup, not a per-row query.
  *
+ * The row shape/mapping used to hydrate ids (`GifRow`, `GIF_COLUMNS`,
+ * `mapGif`) lives in `gifRowMapper.ts`, shared with `postgresSearchService.ts`
+ * (L42-463) so both search backends return byte-identical `GifSummary` rows.
+ *
  * Postgres fallback (L42-461): Elasticsearch is deliberately absent from
  * preview environments (ADR 0001) and can be unreachable in production too,
  * yet `GET /api/search` was the only route with a hard dependency on it -

@@ -1,10 +1,13 @@
--- Migration: 0009_create_generation_prompts_table (down)
--- Reverses 0009_create_generation_prompts_table.up.sql.
---
--- Rollback: drops the table (indexes/trigger/constraints go with it). Safe
---   once generation_attempts (0010) has already been rolled back, since it
---   holds an FK to this table -- enforced by running `migrate down` in
---   reverse order.
--- Data impact: destroys all generation_prompts rows.
-
+-- Rollback for 0009_create_generation_prompts_table
+-- Locking behaviour: DROP TABLE takes ACCESS EXCLUSIVE on this table; brief
+--   unless a long-running transaction is reading it.
+-- Rollback order: run after 0010's down-migration (which drops
+--   `generation_attempts`, the table with an FK pointing at this one) --
+--   enforced by running `migrate down` in reverse migration order. Postgres
+--   requires the referencing table/constraint to be gone first regardless of
+--   that FK's `ON DELETE` action.
+-- Data impact: DESTRUCTIVE -- deletes every generation_prompts row (all
+--   prompt text and active/inactive history). Only run this on a database
+--   where that is intended (e.g. tearing a dev/test DB back down); never
+--   run against production without a reviewed data-loss plan.
 DROP TABLE IF EXISTS generation_prompts;
