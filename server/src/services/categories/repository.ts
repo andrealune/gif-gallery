@@ -82,8 +82,41 @@ function mapGif(row: GifRow): GifSummary {
   };
 }
 
+/**
+ * L42-465: `categories.thumbnail_url` (migration 0012) is never written by any code path, so it
+ * is `NULL` for every category and the derived `thumbnailUrl` below was always `null` too - see
+ * ADR 0002 and L42-465 for the trail. Rather than backfilling/maintaining a column on write, we
+ * derive it on read from the most recently created *active* gif in the category, exactly as the
+ * approved L42-449 proposal specified: a single joined query using `DISTINCT ON`, not one query
+ * per category (`N+1`).
+ *
+ * `COALESCE(thumbnail_url, url)` picks the gif's own `thumbnail_url` when the gif has one (e.g. a
+ * Tenor "tinygif" preview) and otherwise falls back to its main `url`. Neither of those is a
+ * generated static poster frame - this pipeline has no image-processing step that extracts one -
+ * so `CategorySummary.thumbnailUrl` is always a *raw gif asset* (animated), same as
+ * `GifSummary.thumbnailUrl`. `CategoryCard`/`GifCard` render it in a plain `<img>` with no
+ * pause/reduced-motion control, which is the pre-existing WCAG 2.2.2 exposure ADR 0002 filed as
+ * its own piece of work - this change does not introduce it and does not fix it.
+ *
+ * `c.thumbnail_url` itself is left in the `COALESCE` ahead of the derived value so that a future
+ * write path (e.g. a category editor) that sets it explicitly always wins over the derived
+ * "latest active gif" value, without any further code change here.
+ */
+const LATEST_ACTIVE_GIF_THUMBNAILS_CTE = `
+  WITH latest_active_gif_thumbnails AS (
+    SELECT DISTINCT ON (category_id)
+      category_id,
+      COALESCE(thumbnail_url, url) AS thumbnail_url
+    FROM gifs
+    WHERE status = 'active' AND category_id IS NOT NULL
+    ORDER BY category_id, created_at DESC
+  )
+`;
+
 const CATEGORY_COLUMNS = `
-  c.id, c.name, c.slug, c.description, c.thumbnail_url, c.created_at, c.updated_at,
+  c.id, c.name, c.slug, c.description,
+  COALESCE(c.thumbnail_url, lgt.thumbnail_url) AS thumbnail_url,
+  c.created_at, c.updated_at,
   COUNT(g.id) FILTER (WHERE g.status = 'active') AS gif_count
 `;
 
@@ -104,7 +137,8 @@ const GENERATION_PROMPTS_CATEGORY_FKEY = 'generation_prompts_category_id_fkey';
  * Read/delete access to `categories` and the gifs assigned to them. A gif only counts towards
  * `gifCount`/appears in `listGifsByCategory` while `status = 'active'` (mirrors the
  * `gifs_active_created_at_idx` partial index - archived/flagged/soft-deleted gifs are excluded
- * from public listings, same as the rest of the catalog).
+ * from public listings, same as the rest of the catalog). `thumbnailUrl` is derived the same way,
+ * see `LATEST_ACTIVE_GIF_THUMBNAILS_CTE` above.
  */
 export class CategoryRepository implements CategoryRepositoryLike {
   constructor(private readonly database: DatabasePool = pool) {}
@@ -112,10 +146,12 @@ export class CategoryRepository implements CategoryRepositoryLike {
   async listCategories({ limit, offset }: PaginationParams): Promise<Page<CategorySummary>> {
     const [rows, count] = await Promise.all([
       this.database.query<CategoryRow>(
-        `SELECT ${CATEGORY_COLUMNS}
+        `${LATEST_ACTIVE_GIF_THUMBNAILS_CTE}
+         SELECT ${CATEGORY_COLUMNS}
          FROM categories c
          LEFT JOIN gifs g ON g.category_id = c.id
-         GROUP BY c.id
+         LEFT JOIN latest_active_gif_thumbnails lgt ON lgt.category_id = c.id
+         GROUP BY c.id, lgt.thumbnail_url
          ORDER BY c.name ASC
          LIMIT $1 OFFSET $2`,
         [limit, offset]
@@ -134,11 +170,13 @@ export class CategoryRepository implements CategoryRepositoryLike {
   async findCategory(idOrSlug: string): Promise<CategorySummary | null> {
     const column = isUuid(idOrSlug) ? 'c.id' : 'c.slug';
     const result = await this.database.query<CategoryRow>(
-      `SELECT ${CATEGORY_COLUMNS}
+      `${LATEST_ACTIVE_GIF_THUMBNAILS_CTE}
+       SELECT ${CATEGORY_COLUMNS}
        FROM categories c
        LEFT JOIN gifs g ON g.category_id = c.id
+       LEFT JOIN latest_active_gif_thumbnails lgt ON lgt.category_id = c.id
        WHERE ${column} = $1
-       GROUP BY c.id`,
+       GROUP BY c.id, lgt.thumbnail_url`,
       [idOrSlug]
     );
 
