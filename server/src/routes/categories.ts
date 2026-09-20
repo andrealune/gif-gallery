@@ -5,9 +5,10 @@ import type { CategoryRepositoryLike } from '../services/categories';
 import { parsePagination } from '../utils/pagination';
 
 /**
- * `GET /api/categories`, `GET /api/categories/:idOrSlug` and `GET /api/categories/:idOrSlug/gifs`
- * (L42-417). `repository` defaults to a real `CategoryRepository` (backed by the shared pool) but
- * can be swapped for a fake in tests - see `test/categories/routes.test.ts`.
+ * `GET /api/categories`, `GET /api/categories/:idOrSlug`, `GET /api/categories/:idOrSlug/gifs`
+ * (L42-417) and `DELETE /api/categories/:idOrSlug` (L42-444). `repository` defaults to a real
+ * `CategoryRepository` (backed by the shared pool) but can be swapped for a fake in tests - see
+ * `test/categories/routes.test.ts`.
  */
 export function createCategoriesRouter(repository: CategoryRepositoryLike = new CategoryRepository()): Router {
   const router = Router();
@@ -63,6 +64,27 @@ export function createCategoriesRouter(repository: CategoryRepositoryLike = new 
         category,
         pagination: { limit: page.limit, offset: page.offset, total: page.total },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // DELETE /api/categories/:idOrSlug (L42-444)
+  //
+  // 404 if the category doesn't exist. 409 `{ error, code: 'category_has_generation_prompts',
+  // details: { blockingPromptCount } }` if it still has `generation_prompts` rows - that FK is
+  // `ON DELETE RESTRICT` on purpose (ADR-0001), so this never cascades and never 500s. `gifs`
+  // pointing at the category are un-categorized automatically (`ON DELETE SET NULL`).
+  //
+  // Retirement procedure for a category that still has generation_prompts: (1) set
+  // `is_active = false` on its prompts (stops new generation, keeps the audit trail - does NOT
+  // delete anything and does NOT unblock this endpoint), (2) once retention allows, delete those
+  // now-inactive rows ("purge"), (3) retry this DELETE, which will now succeed. See
+  // docs/database-schema.md#category-retirement.
+  router.delete('/:idOrSlug', async (req, res, next) => {
+    try {
+      await repository.deleteCategory(req.params.idOrSlug);
+      res.status(204).send();
     } catch (err) {
       next(err);
     }

@@ -1,11 +1,22 @@
 import type { NextFunction, Request, Response } from 'express';
 
+export interface HttpErrorOptions {
+  /** Stable, machine-readable code for API clients to branch on (e.g. `category_has_generation_prompts`). */
+  code?: string;
+  /** Structured extra detail for the client, e.g. `{ blockingPromptCount: 3 }` (L42-444). */
+  details?: Record<string, unknown>;
+}
+
 export class HttpError extends Error {
   status: number;
+  code?: string;
+  details?: Record<string, unknown>;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, options: HttpErrorOptions = {}) {
     super(message);
     this.status = status;
+    this.code = options.code;
+    this.details = options.details;
   }
 }
 
@@ -41,5 +52,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   // of the response and only ever reaches the server log above.
   const message = err instanceof HttpError ? err.message : GENERIC_SERVER_ERROR_MESSAGE;
 
-  res.status(status).json({ error: message });
+  // `code`/`details` only ever come from our own `HttpError` subclasses (e.g.
+  // `CategoryHasGenerationPromptsError`, L42-444) - never set for a generic 5xx, so omitted below
+  // and nothing extra leaks for those. Existing callers that only pass `(status, message)` are
+  // unaffected: `code`/`details` stay `undefined` and are left out of the response, same as today.
+  const code = err instanceof HttpError ? err.code : undefined;
+  const details = err instanceof HttpError ? err.details : undefined;
+
+  res.status(status).json({
+    error: message,
+    ...(code ? { code } : {}),
+    ...(details ? { details } : {}),
+  });
 }

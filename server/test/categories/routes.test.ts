@@ -1,8 +1,9 @@
 import express, { type Express } from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import { errorHandler, notFoundHandler } from '../../src/middleware/errorHandler';
+import { errorHandler, notFoundHandler, HttpError } from '../../src/middleware/errorHandler';
 import { createCategoriesRouter } from '../../src/routes/categories';
+import { CategoryHasGenerationPromptsError } from '../../src/services/categories';
 import type { CategoryRepositoryLike, CategorySummary, GifSummary, Page } from '../../src/services/categories';
 
 const CATEGORY: CategorySummary = {
@@ -49,6 +50,7 @@ function fakeRepository(overrides: Partial<CategoryRepositoryLike> = {}): Catego
       idOrSlug === CATEGORY.id || idOrSlug === CATEGORY.slug ? CATEGORY : null
     ),
     listGifsByCategory: vi.fn(async (_categoryId, params) => ({ items: [GIF], total: 1, ...params })),
+    deleteCategory: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -153,5 +155,40 @@ describe('GET /api/categories/:idOrSlug/gifs', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('offset');
+  });
+});
+// L42-444: DELETE must surface the generation_prompts FK as 409, not a 500, and never cascade.
+describe('DELETE /api/categories/:idOrSlug', () => {
+  it('returns 204 when the category is deleted', async () => {
+    const repo = fakeRepository({ deleteCategory: vi.fn(async () => undefined) });
+    const res = await request(buildApp(repo)).delete(`/api/categories/${CATEGORY.id}`);
+
+    expect(res.status).toBe(204);
+    expect(repo.deleteCategory).toHaveBeenCalledWith(CATEGORY.id);
+  });
+
+  it('returns 404 when the category does not exist', async () => {
+    const repo = fakeRepository({
+      deleteCategory: vi.fn(async () => {
+        throw new HttpError(404, 'Category not found: does-not-exist');
+      }),
+    });
+    const res = await request(buildApp(repo)).delete('/api/categories/does-not-exist');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 409 with a stable code and the blocking prompt count when generation_prompts still reference the category', async () => {
+    const repo = fakeRepository({
+      deleteCategory: vi.fn(async () => {
+        throw new CategoryHasGenerationPromptsError(3);
+      }),
+    });
+    const res = await request(buildApp(repo)).delete(`/api/categories/${CATEGORY.id}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('category_has_generation_prompts');
+    expect(res.body.details).toEqual({ blockingPromptCount: 3 });
+    expect(res.body.error).toBeTruthy();
   });
 });

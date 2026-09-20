@@ -1,6 +1,8 @@
 import type { Pool, QueryResultRow } from 'pg';
 import { pool } from '../../db/pool';
 import type { PaginationParams } from '../../utils/pagination';
+import { HttpError } from '../../middleware/errorHandler';
+import { CategoryHasGenerationPromptsError, isForeignKeyViolation } from './errors';
 import type { CategoryRepositoryLike, CategorySummary, GifSummary, Page } from './types';
 
 type DatabasePool = Pick<Pool, 'query'>;
@@ -124,8 +126,15 @@ const GIF_COLUMNS = `
   created_at, updated_at
 `;
 
+// Name Postgres assigns the FK from `generation_prompts.category_id` to `categories(id)`
+// (`<table>_<column>_fkey`, the default when the column's inline `REFERENCES` isn't given an
+// explicit `CONSTRAINT` name - see migration 0009). It is deliberately `ON DELETE RESTRICT`
+// (L42-444 / ADR-0001), unlike `gifs.category_id`'s `ON DELETE SET NULL` - a prompt without a
+// category would violate BR-5, and cascading the delete would destroy the BR-3/BR-7 audit trail.
+const GENERATION_PROMPTS_CATEGORY_FKEY = 'generation_prompts_category_id_fkey';
+
 /**
- * Read access to `categories` and the gifs assigned to them. A gif only counts towards
+ * Read/delete access to `categories` and the gifs assigned to them. A gif only counts towards
  * `gifCount`/appears in `listGifsByCategory` while `status = 'active'` (mirrors the
  * `gifs_active_created_at_idx` partial index - archived/flagged/soft-deleted gifs are excluded
  * from public listings, same as the rest of the catalog). `thumbnailUrl` is derived the same way,
@@ -198,5 +207,55 @@ export class CategoryRepository implements CategoryRepositoryLike {
       limit,
       offset,
     };
+  }
+
+  /**
+   * Deletes a category. `gifs` pointing at it are un-categorized automatically (`ON DELETE SET
+   * NULL`, unchanged by this method - no application code needed there).
+   *
+   * `generation_prompts` is different on purpose: its FK to `categories` is `ON DELETE RESTRICT`
+   * (L42-444 / ADR-0001, migration 0009), so a category that still has prompt rows cannot be
+   * deleted at all - not even a cascade, because that would silently destroy the BR-3/BR-7 audit
+   * trail. We check for blocking rows up front (the common case: a clear, accurate count in the
+   * error) and also catch the FK violation itself as a race-condition safety net (a prompt
+   * inserted between the check and the `DELETE`), so callers only ever see `404` or `409` here,
+   * never an unhandled `23503`.
+   *
+   * See `docs/database-schema.md#category-retirement` for the operator-facing
+   * deactivate-then-purge-then-delete procedure this error is meant to point people at.
+   */
+  async deleteCategory(idOrSlug: string): Promise<void> {
+    const category = await this.findCategory(idOrSlug);
+    if (!category) {
+      throw new HttpError(404, `Category not found: ${idOrSlug}`);
+    }
+
+    const blockingCount = await this.countGenerationPrompts(category.id);
+    if (blockingCount > 0) {
+      throw new CategoryHasGenerationPromptsError(blockingCount);
+    }
+
+    try {
+      await this.database.query('DELETE FROM categories WHERE id = $1', [category.id]);
+    } catch (err) {
+      if (isForeignKeyViolation(err, GENERATION_PROMPTS_CATEGORY_FKEY) || isForeignKeyViolation(err)) {
+        // Either a specifically-named FK match, or (belt-and-suspenders, in case the driver in use
+        // doesn't report `constraint`) any other 23503 while deleting a category: re-check rather
+        // than guess, so the count in the error is always accurate.
+        const recount = await this.countGenerationPrompts(category.id);
+        if (recount > 0) {
+          throw new CategoryHasGenerationPromptsError(recount);
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async countGenerationPrompts(categoryId: string): Promise<number> {
+    const result = await this.database.query<{ count: string }>(
+      'SELECT COUNT(*)::int AS count FROM generation_prompts WHERE category_id = $1',
+      [categoryId]
+    );
+    return Number(result.rows[0]?.count ?? 0);
   }
 }
