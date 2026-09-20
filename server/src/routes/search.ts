@@ -13,8 +13,8 @@ import { parsePagination } from '../utils/pagination';
  *
  * `service` defaults to whichever backend `search/backend.ts#createGifSearchQueryService` selects
  * (Elasticsearch-backed `GifSearchQueryService`, or the Postgres-backed `PostgresGifSearchQueryService`
- * fallback used when Elasticsearch isn't configured/reachable - `SEARCH_BACKEND`, L42-463) but can be
- * swapped for a fake in tests - see `test/search/routes.test.ts` and
+ * fallback used wholesale when Elasticsearch isn't configured/reachable at startup - `SEARCH_BACKEND`,
+ * L42-463) but can be swapped for a fake in tests - see `test/search/routes.test.ts` and
  * `test/search/routes.postgresBackend.test.ts`.
  *
  * L42-461: when the resolved `GifSearchQueryService` itself has to fall back to Postgres full-text
