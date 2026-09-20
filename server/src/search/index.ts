@@ -23,6 +23,7 @@ export {
   type RunReindexPipelineOptions,
   type RunReindexPipelineResult,
 } from './pipeline';
+export { PostgresGifSearchFallback } from './postgresFallback';
 export { PostgresGifSearchQueryService } from './postgresSearchService';
 export {
   GifSearchSourceRepository,
@@ -33,6 +34,7 @@ export {
 export { buildSearchRequest, type GifSearchQueryParams } from './searchQuery';
 export {
   GifSearchQueryService,
+  type GifSearchFallbackLike,
   type GifSearchQueryServiceLike,
   type SearchGifsResult,
 } from './searchService';

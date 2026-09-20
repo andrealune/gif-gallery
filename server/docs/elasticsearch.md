@@ -3,23 +3,43 @@
 Search-oriented index of the GIF catalog (title, description, tags,
 category), separate from Postgres' own full-text column
 (`gifs.search_vector`, see [`docs/database-schema.md`](./database-schema.md)).
-Elasticsearch is the intended backend for the public search API (a later
-task); Postgres full-text search remains available as a fallback/simple
-substring path and is what the current data model is validated against.
+Elasticsearch is the preferred backend for the public search API
+(`GET /api/search`, `src/routes/search.ts`), ranked and filtered by
+`src/search/searchQuery.ts`.
+
+**Postgres fallback (L42-461).** Elasticsearch is deliberately absent from
+preview environments (extra container, 512m heap, 30s+ readiness, index
+creation/reindex against a database with no gif rows - see
+`.berry/preview.json`, which sets `ELASTICSEARCH_ENABLED=false`), and a
+production cluster can legitimately be unreachable too. `GifSearchQueryService`
+(`src/search/searchService.ts`) uses `src/search/postgresFallback.ts`'s
+`PostgresGifSearchFallback` - full-text search over `gifs.search_vector` plus
+tags, same `{ items, total, limit, offset }` shape - whenever
+`ELASTICSEARCH_ENABLED=false`, or automatically per request when a query
+against the cluster throws. Either way the result is tagged `degraded: true`,
+which `routes/search.ts` turns into a `degraded: true` response field and an
+`X-Search-Degraded: true` header, so the client can show a "basic search"
+notice instead of silently returning lower-relevance results as if nothing
+changed. This fallback intentionally has no fuzzy/typo tolerance and no
+cross-field relevance scoring - it is "basic search", not full parity with
+Elasticsearch.
 
 Code lives in `src/search/`:
 
-| File                  | Responsibility                                                             |
-| --------------------- | --------------------------------------------------------------------------- |
-| `client.ts`           | Elasticsearch client factory + shared instance, connection health check    |
-| `gifsIndex.ts`         | Index mapping (schema) + settings + versioned index/alias naming          |
-| `documentMapper.ts`    | Maps a Postgres row to the document shape stored in the index             |
-| `repository.ts`        | Reads active gifs (+ category, + tags) from Postgres, keyset-paginated    |
-| `pipeline.ts`          | Index lifecycle: create index, bulk load, alias swap, prune old versions  |
-| `createIndex.ts`       | CLI: bootstrap an empty index + alias (`npm run search:create-index`)     |
-| `reindex.ts`           | CLI: full (re)build from Postgres (`npm run search:reindex`)              |
-| `syncJob.ts`           | Incremental sync job: keeps the index in step with individual gif writes (L42-419) |
-| `sync.ts`              | CLI: runs the sync job standalone (`npm run search:sync`)                 |
+| File                    | Responsibility                                                             |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `client.ts`             | Elasticsearch client factory + shared instance, connection health check    |
+| `gifsIndex.ts`          | Index mapping (schema) + settings + versioned index/alias naming          |
+| `documentMapper.ts`     | Maps a Postgres row to the document shape stored in the index             |
+| `repository.ts`         | Reads active gifs (+ category, + tags) from Postgres, keyset-paginated    |
+| `pipeline.ts`           | Index lifecycle: create index, bulk load, alias swap, prune old versions  |
+| `createIndex.ts`        | CLI: bootstrap an empty index + alias (`npm run search:create-index`)     |
+| `reindex.ts`            | CLI: full (re)build from Postgres (`npm run search:reindex`)              |
+| `syncJob.ts`            | Incremental sync job: keeps the index in step with individual gif writes (L42-419) |
+| `sync.ts`               | CLI: runs the sync job standalone (`npm run search:sync`)                 |
+| `searchQuery.ts`        | Builds the ranked/filtered Elasticsearch request for `GET /api/search`    |
+| `searchService.ts`      | Query service: runs the ES (or Postgres fallback) query, hydrates from Postgres |
+| `postgresFallback.ts`   | Postgres full-text fallback used when Elasticsearch is disabled/unreachable (L42-461) |
 
 ## Running a cluster
 

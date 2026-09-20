@@ -120,4 +120,34 @@ describe('GET /api/search', () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('Internal server error');
   });
+
+  // L42-461: surfaces the Postgres-fallback signal from GifSearchQueryService.
+  it('adds degraded:true and the X-Search-Degraded header when the service reports a degraded result', async () => {
+    const service = fakeService({
+      search: vi.fn(async (params) => ({
+        items: [GIF],
+        total: 1,
+        limit: params.limit,
+        offset: params.offset,
+        degraded: true,
+      })),
+    });
+    const res = await request(buildApp(service)).get('/api/search?q=cat');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['x-search-degraded']).toBe('true');
+    expect(res.body).toEqual({
+      data: [GIF],
+      pagination: { limit: 24, offset: 0, total: 1 },
+      degraded: true,
+    });
+  });
+
+  it('omits degraded and the header for a normal (non-degraded) result', async () => {
+    const service = fakeService();
+    const res = await request(buildApp(service)).get('/api/search?q=cat');
+
+    expect(res.headers['x-search-degraded']).toBeUndefined();
+    expect(res.body).not.toHaveProperty('degraded');
+  });
 });
