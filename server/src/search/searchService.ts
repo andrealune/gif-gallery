@@ -28,10 +28,18 @@
  * throws (unreachable, timed out, ...), and tags the result `degraded:
  * true` so `routes/search.ts` can surface that to the client instead of
  * silently pretending it is full-relevance search.
+ *
+ * See `postgresSearchService.ts` for the Postgres-only fallback selected
+ * wholesale when Elasticsearch is not configured/reachable at startup
+ * (L42-463, `backend.ts`) - it implements the same `GifSearchQueryServiceLike`
+ * contract in one query instead of two, using the row mapping shared via
+ * `gifRowMapper.ts`. The per-request fallback here (via `fallback`/
+ * `elasticsearchEnabled` below) is the safety net for when this service is
+ * itself the resolved backend but Elasticsearch still goes away mid-flight.
  */
 import type { Client } from '@elastic/elasticsearch';
 import type { SearchTotalHits } from '@elastic/elasticsearch/lib/api/types';
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool } from 'pg';
 import { env } from '../config/env';
 import { pool } from '../db/pool';
 import type { GifSummary } from '../services/categories';
@@ -67,54 +75,6 @@ export interface GifSearchQueryServiceLike {
 /** What `GifSearchQueryService` falls back to - `postgresFallback.ts`'s `PostgresGifSearchFallback` in production, a fake in tests. */
 export interface GifSearchFallbackLike {
   search(params: GifSearchQueryParams): Promise<SearchGifsResult>;
-}
-
-interface GifRow extends QueryResultRow {
-  id: string;
-  source: string;
-  title: string;
-  description: string | null;
-  category_id: string | null;
-  url: string;
-  thumbnail_url: string | null;
-  width: number | null;
-  height: number | null;
-  file_size_bytes: string | number | null;
-  duration_ms: number | null;
-  mime_type: string;
-  status: string;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-const GIF_COLUMNS = `
-  id, source, title, description, category_id, url, thumbnail_url,
-  width, height, file_size_bytes, duration_ms, mime_type, status,
-  created_at, updated_at
-`;
-
-function toIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function mapGif(row: GifRow): GifSummary {
-  return {
-    id: row.id,
-    source: row.source,
-    title: row.title,
-    description: row.description,
-    categoryId: row.category_id,
-    url: row.url,
-    thumbnailUrl: row.thumbnail_url,
-    width: row.width,
-    height: row.height,
-    fileSizeBytes: row.file_size_bytes === null ? null : Number(row.file_size_bytes),
-    durationMs: row.duration_ms,
-    mimeType: row.mime_type,
-    status: row.status,
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at),
-  };
 }
 
 function extractTotal(total: SearchTotalHits | number | undefined): number {
