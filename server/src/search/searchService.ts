@@ -36,6 +36,7 @@ import { env } from '../config/env';
 import { pool } from '../db/pool';
 import type { GifSummary } from '../services/categories';
 import { getElasticsearchClient } from './client';
+import { GIF_COLUMNS, type GifRow, mapGif } from './gifRowMapper';
 import { GIFS_ALIAS } from './pipeline';
 import { PostgresGifSearchFallback } from './postgresFallback';
 import { buildSearchRequest, type GifSearchQueryParams } from './searchQuery';

@@ -21,6 +21,26 @@ export const isNotFound = (err: unknown): boolean => err instanceof ApiError && 
 interface ListEnvelope<T> {
   data: T[];
   pagination: { limit: number; offset: number; total: number };
+  /**
+   * Only ever present (and `true`) on `/api/search` - see `SearchResults`/`searchGifs` below.
+   * Every other list envelope (categories, category gifs, ...) never sends this.
+   */
+  degraded?: boolean;
+}
+
+/**
+ * A page of search results, with the "basic search" signal `GET /api/search` sends (backend:
+ * `server/src/routes/search.ts`, L42-461) when `GifSearchQueryService` used its Postgres
+ * full-text fallback instead of Elasticsearch - always the case in preview per ADR 0001
+ * (`docs/adr/0001-preview-environment-topology.md`), and also whenever the cluster is otherwise
+ * unreachable in a deployed environment.
+ *
+ * `degraded` is optional (rather than required) so existing callers/tests that build a plain
+ * `Page<GifSummary>` by hand keep working unchanged; every real response from `searchGifs`
+ * always sets it explicitly (`true` or `false`), never leaves it `undefined`.
+ */
+export interface SearchResults<T> extends Page<T> {
+  degraded?: boolean;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -42,7 +62,17 @@ function toPage<T>(envelope: ListEnvelope<T>): Page<T> {
   };
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * `onResponse` is an optional hook run once the response is known to be OK (status-wise) but
+ * before its body is parsed - the only caller that needs it today is `searchGifs`, which reads
+ * the `X-Search-Degraded` header off the raw `Response` (the JSON body carries the same signal as
+ * a `degraded` field, but a header lets a caller that only cares about that bit skip parsing).
+ */
+async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+  onResponse?: (res: Response) => void
+): Promise<T> {
   // Resolved per request, not at module load: on the Next.js server this may be an internal,
   // container-to-container base URL (API_INTERNAL_BASE_URL) while the browser keeps the public one
   // - see lib/config.ts and ADR 0001 (docs/adr/0001-preview-environment-topology.md).
@@ -67,6 +97,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(message, res.status);
   }
+
+  onResponse?.(res);
 
   return (await res.json()) as T;
 }
@@ -118,15 +150,33 @@ export async function getCategoryGifs(
  * full-text search over the `gifs` index, hydrated to the same `GifSummary` shape every other
  * list endpoint returns. Speaks the same `{ data, pagination }` / `limit`+`offset` envelope, so
  * the search results page (L42-428) needed no changes once the route shipped.
+ *
+ * `degraded` (L42-461/L42-464) is `true` when the server used its Postgres full-text fallback
+ * instead of Elasticsearch - read from either signal the backend sends (the `degraded: true`
+ * body field, or the `X-Search-Degraded: true` header), whichever is present. Callers
+ * (`SearchForm`, the `/search` page) use it to tell "basic search" apart from an actual
+ * relevance regression instead of silently rendering the two identically.
  */
-export async function searchGifs(q: string, params: PaginationParams = {}): Promise<Page<GifSummary>> {
+export async function searchGifs(
+  q: string,
+  params: PaginationParams = {}
+): Promise<SearchResults<GifSummary>> {
   const query = buildQuery({
     q,
     limit: params.limit ?? DEFAULT_PAGE_SIZE,
     offset: params.offset ?? 0,
   });
-  const envelope = await apiFetch<ListEnvelope<GifSummary>>(`/search${query}`, { cache: 'no-store' });
-  return toPage(envelope);
+
+  let degradedHeader = false;
+  const envelope = await apiFetch<ListEnvelope<GifSummary>>(
+    `/search${query}`,
+    { cache: 'no-store' },
+    (res) => {
+      degradedHeader = res.headers.get('X-Search-Degraded') === 'true';
+    }
+  );
+
+  return { ...toPage(envelope), degraded: envelope.degraded === true || degradedHeader };
 }
 
 /**

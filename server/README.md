@@ -18,7 +18,8 @@ server/
   migrations/    SQL schema migrations (NNNN_name.up.sql / .down.sql pairs)
   src/
     config/      environment variable loading & validation (env.ts)
-    db/          database connection pool (pool.ts) and migration runner (migrate.ts)
+    db/          database connection pool (pool.ts), migration runner (migrate.ts) and the
+                 idempotent demo seed (seedDemo.ts, seedAssets/demo/ - L42-460)
     middleware/  Express middleware (error handling, etc.)
     routes/      route definitions, mounted under /api
     services/
@@ -56,6 +57,10 @@ Other scripts:
 - `npm run migrate:status` – list applied/pending schema migrations
 - `npm run migrate:up` – apply all pending schema migrations
 - `npm run migrate:down [-- --step N]` – roll back the most recent migration (or the last N)
+- `npm run seed:demo` – idempotently insert ~30 placeholder gif rows across the seeded
+  categories, for a fresh local checkout/preview to have non-empty gallery grids to review
+  (L42-460). Refuses to run when `NODE_ENV=production` unless `SEED_DEMO_FORCE=true` is set
+  explicitly - never run this against a real production database.
 
 **System dependency:** the image-to-GIF pipeline (`src/services/gif`) shells out to `ffmpeg`/`ffprobe`.
 Install them locally (e.g. `apt-get install ffmpeg` / `brew install ffmpeg`) before running

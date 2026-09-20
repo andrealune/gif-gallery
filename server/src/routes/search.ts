@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { HttpError } from '../middleware/errorHandler';
-import { GifSearchQueryService, type GifSearchQueryServiceLike } from '../search/searchService';
+import { createGifSearchQueryService } from '../search/backend';
+import type { GifSearchQueryServiceLike } from '../search/searchService';
 import { parsePagination } from '../utils/pagination';
 
 /**
  * `GET /api/search?q=&category=&limit=&offset=` (L42-420): full-text search
- * over the `gifs` Elasticsearch index, ranked by relevance, with optional
- * category filtering and the same `{ data, pagination }` / `limit`+`offset`
- * envelope every other list endpoint uses (see `routes/categories.ts`) -
+ * over the `gifs` catalog, ranked by relevance, with optional category
+ * filtering and the same `{ data, pagination }` / `limit`+`offset` envelope
+ * every other list endpoint uses (see `routes/categories.ts`) -
  * `web/src/lib/api.ts#searchGifs` already speaks this exact contract.
  * `service` defaults to a real `GifSearchQueryService` (backed by the
  * shared Elasticsearch client + Postgres pool) but can be swapped for a
@@ -21,8 +22,14 @@ import { parsePagination } from '../utils/pagination';
  * can show a "basic search" notice. Omitted entirely otherwise, so this is
  * additive - an existing caller that only reads `data`/`pagination` sees no
  * change.
+ *
+ * `service` defaults to whichever backend `search/backend.ts#createGifSearchQueryService` selects
+ * (Elasticsearch-backed `GifSearchQueryService`, or the Postgres-backed `PostgresGifSearchQueryService`
+ * fallback used when Elasticsearch isn't configured/reachable - `SEARCH_BACKEND`, L42-463) but can be
+ * swapped for a fake in tests - see `test/search/routes.test.ts` and
+ * `test/search/routes.postgresBackend.test.ts`.
  */
-export function createSearchRouter(service: GifSearchQueryServiceLike = new GifSearchQueryService()): Router {
+export function createSearchRouter(service: GifSearchQueryServiceLike = createGifSearchQueryService()): Router {
   const router = Router();
 
   // GET /api/search?q=&category=&limit=&offset=
