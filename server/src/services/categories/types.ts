@@ -55,4 +55,18 @@ export interface CategoryRepositoryLike {
   findCategory(idOrSlug: string): Promise<CategorySummary | null>;
   /** `categoryId` must be a resolved category UUID (e.g. from `findCategory`), not a slug. */
   listGifsByCategory(categoryId: string, params: PaginationParams): Promise<Page<GifSummary>>;
+  /**
+   * Deletes a category (by UUID `id` or by `slug`). Resolves once the row is gone; `gifs`
+   * referencing it are un-categorized (`category_id` set to NULL - `gifs.category_id`'s
+   * `ON DELETE SET NULL`, unchanged by this).
+   *
+   * Rejects with:
+   * - an `HttpError` (404) if no such category exists;
+   * - a `CategoryHasGenerationPromptsError` (409, `code: 'category_has_generation_prompts'`,
+   *   `details.blockingPromptCount`) if the category still has `generation_prompts` rows -
+   *   `generation_prompts.category_id` is `ON DELETE RESTRICT` (L42-444 / ADR-0001), deliberately
+   *   unlike `gifs.category_id`. Deactivate (`is_active = false`) and purge those prompts first;
+   *   see `docs/database-schema.md#category-retirement`.
+   */
+  deleteCategory(idOrSlug: string): Promise<void>;
 }

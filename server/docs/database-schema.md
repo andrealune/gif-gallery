@@ -183,6 +183,38 @@ third-party asset (e.g. the same Giphy id) from being imported twice, while stil
   a concern, consider a separate retention window for `raw_metadata` (e.g. null it out after N days while
   keeping `external_id`/`attribution`) rather than for the whole reference row.
 
+## Category retirement
+
+Deleting a category (`DELETE /api/categories/:idOrSlug`, L42-444) behaves differently depending on what
+still references it:
+
+- `gifs.category_id` is `ON DELETE SET NULL` -- a gif can stand alone with no category, so deleting a
+  category un-categorizes its gifs automatically. No application code is needed for this.
+- `generation_prompts.category_id` (migration 0009, L42-445) is `ON DELETE RESTRICT` on purpose -- a
+  prompt with no category would violate BR-5 of `docs/specs/ai-generation-prompts-spec.md`, and a cascade
+  would silently destroy the BR-3/BR-7 `generation_attempts` audit trail (see ADR-0001 / L42-443). A
+  category that still has `generation_prompts` rows cannot be deleted, full stop -- not even by the API.
+
+`CategoryRepository.deleteCategory` (`src/services/categories/repository.ts`) surfaces this as `404` (no
+such category) or `409 Conflict` with `code: "category_has_generation_prompts"` and
+`details.blockingPromptCount`, never an unhandled `500`. To actually retire a category that has prompts:
+
+1. **Deactivate** its prompts: `UPDATE generation_prompts SET is_active = false WHERE category_id = $1`.
+   This stops the scheduler from selecting them for new generation attempts but does **not** delete
+   anything, and does **not** by itself unblock the category delete -- an inactive prompt row still
+   satisfies the FK and still counts towards `blockingPromptCount`.
+2. **Purge** the now-inactive prompts once retention/audit requirements allow it:
+   `DELETE FROM generation_prompts WHERE category_id = $1 AND is_active = false`. This is the step that
+   actually clears the FK; do it deliberately, not automatically, since it removes rows that
+   `generation_attempts` may still reference for historical reporting.
+3. **Delete** the category (`DELETE /api/categories/:idOrSlug`), which now succeeds.
+
+No `ON DELETE CASCADE` and no cascade-on-delete trigger stands in for this procedure anywhere in the
+schema -- that was considered and rejected in ADR-0001 (silent data loss, untestable from the API). See
+`test/categories/deleteCategory.integration.test.ts` for coverage of every step above against a real
+(embedded Postgres) schema, including an explicit assertion that the FK's `delete_rule` is `RESTRICT` and
+that no such trigger exists on `categories`.
+
 ## Migration operations
 
 Each `.up.sql`/`.down.sql` pair states its own locking behaviour, rollback path and data impact in a

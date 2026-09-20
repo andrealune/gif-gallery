@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CategoryRepository } from '../../src/services/categories';
+import { CategoryHasGenerationPromptsError, CategoryRepository } from '../../src/services/categories';
 
 function fakePool(handler: (sql: string, params?: unknown[]) => { rows: unknown[] }) {
   const query = vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params));
@@ -166,6 +166,95 @@ describe('CategoryRepository', () => {
 
       const countCall = fake.query.mock.calls.find(([sql]) => sql.includes('SELECT COUNT(*)::int AS count FROM gifs'));
       expect(countCall?.[0]).toContain("status = 'active'");
+    });
+  });
+  // L42-444: deleting a category must not silently cascade into generation_prompts (ON DELETE
+  // RESTRICT / ADR-0001). These are mock-level unit tests of the query sequencing; see
+  // `test/categories/deleteCategory.integration.test.ts` for the real-Postgres-semantics coverage
+  // (actual SQLSTATE 23503, actual FK) that the mocks here stand in for.
+  describe('deleteCategory', () => {
+    it('throws a 404 HttpError when the category does not exist, without querying generation_prompts', async () => {
+      const fake = fakePool((sql) => {
+        if (sql.includes('FROM categories c')) return { rows: [] };
+        throw new Error(`unexpected query: ${sql}`);
+      });
+      const repo = new CategoryRepository(fake as never);
+
+      await expect(repo.deleteCategory('does-not-exist')).rejects.toMatchObject({ status: 404 });
+      expect(fake.query.mock.calls.some(([sql]) => sql.includes('generation_prompts'))).toBe(false);
+    });
+
+    it('deletes the category when there are no blocking generation_prompts', async () => {
+      const fake = fakePool((sql) => {
+        if (sql.includes('FROM categories c')) return { rows: [CATEGORY_ROW] };
+        if (sql.includes('FROM generation_prompts')) return { rows: [{ count: 0 }] };
+        if (sql.startsWith('DELETE FROM categories')) return { rows: [] };
+        throw new Error(`unexpected query: ${sql}`);
+      });
+      const repo = new CategoryRepository(fake as never);
+
+      await repo.deleteCategory(CATEGORY_ROW.id);
+
+      const deleteCall = fake.query.mock.calls.find(([sql]) => sql.startsWith('DELETE FROM categories'));
+      expect(deleteCall?.[1]).toEqual([CATEGORY_ROW.id]);
+    });
+
+    it('throws CategoryHasGenerationPromptsError (409) with the blocking count and never issues the DELETE', async () => {
+      const fake = fakePool((sql) => {
+        if (sql.includes('FROM categories c')) return { rows: [CATEGORY_ROW] };
+        if (sql.includes('FROM generation_prompts')) return { rows: [{ count: 2 }] };
+        throw new Error(`unexpected query: ${sql}`);
+      });
+      const repo = new CategoryRepository(fake as never);
+
+      await expect(repo.deleteCategory(CATEGORY_ROW.id)).rejects.toMatchObject({
+        status: 409,
+        code: CategoryHasGenerationPromptsError.CODE,
+        blockingPromptCount: 2,
+      });
+      expect(fake.query.mock.calls.some(([sql]) => sql.startsWith('DELETE FROM categories'))).toBe(false);
+    });
+
+    it('treats a 23503 raised by the DELETE itself the same way, re-counting to keep the count accurate (race-condition safety net)', async () => {
+      let deleteAttempted = false;
+      const fake = {
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes('FROM categories c')) return { rows: [CATEGORY_ROW] };
+          if (sql.includes('FROM generation_prompts')) return { rows: [{ count: deleteAttempted ? 1 : 0 }] };
+          if (sql.startsWith('DELETE FROM categories')) {
+            deleteAttempted = true;
+            const err = new Error('violates foreign key constraint "generation_prompts_category_id_fkey"') as Error & {
+              code: string;
+              constraint: string;
+            };
+            err.code = '23503';
+            err.constraint = 'generation_prompts_category_id_fkey';
+            throw err;
+          }
+          throw new Error(`unexpected query: ${sql}`);
+        }),
+      };
+      const repo = new CategoryRepository(fake as never);
+
+      await expect(repo.deleteCategory(CATEGORY_ROW.id)).rejects.toMatchObject({
+        status: 409,
+        code: CategoryHasGenerationPromptsError.CODE,
+        blockingPromptCount: 1,
+      });
+    });
+
+    it('rethrows an unrelated database error unchanged', async () => {
+      const fake = {
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes('FROM categories c')) return { rows: [CATEGORY_ROW] };
+          if (sql.includes('FROM generation_prompts')) return { rows: [{ count: 0 }] };
+          if (sql.startsWith('DELETE FROM categories')) throw new Error('connection reset');
+          throw new Error(`unexpected query: ${sql}`);
+        }),
+      };
+      const repo = new CategoryRepository(fake as never);
+
+      await expect(repo.deleteCategory(CATEGORY_ROW.id)).rejects.toThrow('connection reset');
     });
   });
 });
